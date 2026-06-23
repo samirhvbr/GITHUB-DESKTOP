@@ -55,7 +55,6 @@
     ],
     "ask": [
       "Bash(sudo:*)",
-      "Bash(git push:*)",
       "Bash(yarn add:*)",
       "Bash(yarn remove:*)",
       "Bash(yarn upgrade:*)",
