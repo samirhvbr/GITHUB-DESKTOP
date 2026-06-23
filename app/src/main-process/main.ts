@@ -10,6 +10,7 @@ import {
   nativeTheme,
 } from 'electron'
 import * as Fs from 'fs'
+import * as Path from 'path'
 
 import { AppWindow } from './app-window'
 import { buildDefaultMenu, getAllMenuItems } from './menu'
@@ -119,6 +120,15 @@ if (__DARWIN__) {
 // we'll want to set the right App User Model ID from production builds.
 if (__WIN32__ && __DEV__) {
   app.setAppUserModelId('com.squirrel.GitHubDesktop.GitHubDesktop')
+}
+
+// Dev builds otherwise default to the same user data directory — and therefore
+// the same single-instance lock — as an installed production GitHub Desktop,
+// which makes the dev build quit immediately as a "duplicate instance" whenever
+// the production app is running. Give dev builds their own directory so the two
+// can run side by side.
+if (__DEV__) {
+  app.setPath('userData', Path.join(app.getPath('appData'), 'GitHub Desktop-dev'))
 }
 
 app.on('window-all-closed', () => {

@@ -41,5 +41,11 @@ export function run(spawnOptions: SpawnOptions) {
     NODE_ENV: 'development',
   })
 
+  // The surrounding shell may have ELECTRON_RUN_AS_NODE set (some tooling sets
+  // it). If it leaks into the launched binary, Electron runs as plain Node, the
+  // `app` module is undefined and the main process exits immediately with no
+  // window. Strip it so the dev build always boots as a real Electron app.
+  delete opts.env.ELECTRON_RUN_AS_NODE
+
   return spawn(binaryPath, [], opts)
 }
