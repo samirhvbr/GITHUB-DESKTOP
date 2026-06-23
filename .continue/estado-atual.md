@@ -51,7 +51,10 @@ No Linux atual não há Node 24 nem nvm; o app roda de fato no **Windows** — g
 
 ## Próximos passos
 
-- [ ] **Validação visual da Fase 1** — rodar `yarn start` no Windows e conferir o dashboard.
-- [ ] **Fase 2 (UI):** seguir [fase2-clone-design.md](fase2-clone-design.md) — multi-seleção +
-      clone em lote por pasta raiz, depois a aba "usuário público".
+- [x] Fase 1 (dashboard) e **Fase 2b (clone em lote)** — implementadas e **testadas na VM**. ✅
+- [ ] **Polir o clone em lote** (feedback do teste): (1) scroll não voltar ao topo a cada
+      seleção; (2) reduzir "peso" (item PureComponent + fechar o DevTools em dev); (3) **pular**
+      repos que já existem, com aviso, em vez do popup de erro "Retry clone".
+- [ ] **Fase 2c:** ajuste individual de pasta por repo + aba "usuário público" (`streamPublicRepositories`).
 - [ ] **Fase 3:** push agendado + auto-commit opt-in — ver [plano-tecnico.md](plano-tecnico.md).
+- [ ] **Requisito novo (SAMIR-PROJETO):** garantir multiplataforma — Windows / macOS / Linux (Gnome, Debian Trixie).

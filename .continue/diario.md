@@ -4,6 +4,25 @@ Log append-only. Uma entrada por sessão, mais recente no topo.
 
 ---
 
+## 2026-06-23 (cont. 3) — Clone em lote TESTADO e funcionando na VM
+
+- ✅ **Clone em lote validado na VM Windows**: marcar vários repos (clique na linha) +
+  "Clone N repositories" → baixou todos em `Documents\GitHub` (AREA81, BLUE3-INTRANET,
+  IA-MODELFILES), cada um na subpasta, no branch default. Multi-seleção por clique OK
+  após o fix do toggle (`ef2de17d93`).
+- **Ajustes pedidos no teste (a fazer):**
+  1. **Scroll volta ao topo a cada seleção** — o `List` (filter-list/list.tsx) re-ancora o
+     scroll ao clicar (selectedRow controlado por props.selectedItem). Investigado: o clique
+     no item dispara onRowClick e o estado de seleção interno briga com o single suprimido.
+  2. **"Pesado"** — em parte o **DevTools** aberto (axe) em dev; em parte re-render do item
+     (tornar `CloneableRepositoryListItem` PureComponent).
+  3. **Repo já existente** → popup de erro "destination path already exists / Retry clone".
+     Operador quer **pular + avisar** ("já existe, pulando"), não o erro.
+- **Novo requisito** (SAMIR-PROJETO): **multiplataforma** — Windows, macOS e Linux (Gnome /
+  Debian Trixie). Considerar ao mexer em paths/UI.
+
+---
+
 ## 2026-06-23 (cont. 2) — App rodando na VM + Fase 2b (clone em lote)
 
 - **App validado na VM Windows** via `run-local.cmd` (gotchas resolvidos: Node 24 por
