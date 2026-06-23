@@ -148,6 +148,13 @@ interface IGitHubTabState extends IBaseTabState {
    * is selected.
    */
   readonly selectedItem: IAPIRepository | null
+
+  /**
+   * In multi-select (batch clone) mode, the clone URLs of the repositories the
+   * user has checked to clone together into the root folder, each on its
+   * default branch.
+   */
+  readonly selectedUrls: ReadonlySet<string>
 }
 
 /** The component for cloning a repository. */
@@ -196,12 +203,14 @@ export class CloneRepository extends React.Component<
         kind: 'dotComTabState',
         filterText: '',
         selectedItem: null,
+        selectedUrls: new Set<string>(),
         ...initialBaseTabState,
       },
       enterpriseTabState: {
         kind: 'enterpriseTabState',
         filterText: '',
         selectedItem: null,
+        selectedUrls: new Set<string>(),
         ...initialBaseTabState,
       },
       urlTabState: {
@@ -321,6 +330,27 @@ export class CloneRepository extends React.Component<
       return null
     }
 
+    // Batch clone: when one or more repositories are checked on a GitHub tab,
+    // the primary action clones all of them into the root folder at once.
+    if (selectedTab !== CloneRepositoryTab.Generic) {
+      const { selectedUrls, path } = this.getGitHubTabState(selectedTab)
+      if (selectedUrls.size > 0) {
+        const count = selectedUrls.size
+        const disabled = this.state.loading || path == null || path.length === 0
+
+        return (
+          <DialogFooter>
+            <OkCancelButtonGroup
+              okButtonText={`Clone ${count} ${
+                count === 1 ? 'repository' : 'repositories'
+              }`}
+              okButtonDisabled={disabled}
+            />
+          </DialogFooter>
+        )
+      }
+    }
+
     const disabled = this.checkIfCloningDisabled()
 
     return (
@@ -384,6 +414,8 @@ export class CloneRepository extends React.Component<
               filterText={tabState.filterText}
               onFilterTextChanged={this.onFilterTextChanged}
               onItemClicked={this.onItemClicked}
+              selectedRepositoryUrls={tabState.selectedUrls}
+              onToggleRepositorySelection={this.onToggleRepository}
               onSelectedAccountChanged={this.onSelectedAccountChanged}
             />
           )
@@ -564,6 +596,64 @@ export class CloneRepository extends React.Component<
       this.setGitHubTabState({ selectedItem }, this.props.selectedTab)
       this.updateUrl(selectedItem === null ? '' : selectedItem.clone_url)
     }
+  }
+
+  private onToggleRepository = (repository: IAPIRepository) => {
+    const tab = this.props.selectedTab
+    if (tab === CloneRepositoryTab.Generic) {
+      return
+    }
+
+    const { selectedUrls } = this.getGitHubTabState(tab)
+    const next = new Set(selectedUrls)
+    if (next.has(repository.clone_url)) {
+      next.delete(repository.clone_url)
+    } else {
+      next.add(repository.clone_url)
+    }
+    this.setGitHubTabState({ selectedUrls: next }, tab)
+  }
+
+  /**
+   * Clone every checked repository into the tab's root folder at once, each
+   * into a subfolder named after the repository and checked out on its default
+   * branch. The dialog is dismissed once, after queueing all clones.
+   */
+  private cloneSelectedRepositories = (
+    tab: CloneRepositoryTab.DotCom | CloneRepositoryTab.Enterprise
+  ) => {
+    const tabState = this.getGitHubTabState(tab)
+    const account = this.getAccountForTab(tab)
+
+    // The single-select flow appends the repo name to `path` (root/repoName).
+    // For the batch clone we want just the root folder, so strip that trailing
+    // segment whenever a single repository also happens to be selected.
+    const rootPath =
+      tabState.selectedItem !== null && tabState.path !== null
+        ? Path.dirname(tabState.path)
+        : tabState.path
+
+    if (account === null || rootPath == null || rootPath.length === 0) {
+      return
+    }
+
+    const accountState = this.props.apiRepositories.get(account)
+    const repositories = accountState?.repositories ?? []
+    const selected = repositories.filter(r =>
+      tabState.selectedUrls.has(r.clone_url)
+    )
+
+    this.props.dispatcher.closeFoldout(FoldoutType.Repository)
+
+    for (const repo of selected) {
+      const destination = Path.join(rootPath, repo.name)
+      this.props.dispatcher.clone(repo.clone_url, destination, {
+        defaultBranch: repo.default_branch,
+      })
+    }
+
+    setDefaultDir(rootPath)
+    this.props.onDismissed()
   }
 
   private validatePath = async () => {
@@ -757,6 +847,15 @@ export class CloneRepository extends React.Component<
   }
 
   private clone = async () => {
+    const selectedTab = this.props.selectedTab
+    if (selectedTab !== CloneRepositoryTab.Generic) {
+      const { selectedUrls } = this.getGitHubTabState(selectedTab)
+      if (selectedUrls.size > 0) {
+        this.cloneSelectedRepositories(selectedTab)
+        return
+      }
+    }
+
     this.setState({ loading: true })
 
     const cloneInfo = await this.resolveCloneInfo()

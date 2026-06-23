@@ -82,6 +82,12 @@ interface ICloneGithubRepositoryProps {
     source: ClickSource
   ) => void
 
+  /** Multi-select (batch clone): set of selected repositories' clone URLs. */
+  readonly selectedRepositoryUrls: ReadonlySet<string>
+
+  /** Multi-select (batch clone): toggle a repository in/out of the selection. */
+  readonly onToggleRepositorySelection: (repository: IAPIRepository) => void
+
   readonly onSelectedAccountChanged: (account: Account) => void
 }
 
@@ -114,13 +120,21 @@ export class CloneGithubRepository extends React.PureComponent<ICloneGithubRepos
             onFilterTextChanged={this.props.onFilterTextChanged}
             onRefreshRepositories={this.props.onRefreshRepositories}
             onItemClicked={this.props.onItemClicked}
+            selectedRepositoryUrls={this.props.selectedRepositoryUrls}
+            onToggleRepositorySelection={this.props.onToggleRepositorySelection}
           />
         </Row>
 
         <Row className="local-path-field">
           <TextBox
             value={this.props.path}
-            label={__DARWIN__ ? 'Local Path' : 'Local path'}
+            label={
+              this.props.selectedRepositoryUrls.size > 0
+                ? 'Root folder (one subfolder per repository)'
+                : __DARWIN__
+                ? 'Local Path'
+                : 'Local path'
+            }
             placeholder="repository path"
             onValueChanged={this.props.onPathChanged}
           />

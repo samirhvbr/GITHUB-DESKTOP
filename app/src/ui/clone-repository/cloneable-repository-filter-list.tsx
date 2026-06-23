@@ -17,6 +17,7 @@ import { LinkButton } from '../lib/link-button'
 import { Ref } from '../lib/ref'
 import { SectionFilterList } from '../lib/section-filter-list'
 import { TooltippedContent } from '../lib/tooltipped-content'
+import { Checkbox, CheckboxValue } from '../lib/checkbox'
 
 interface ICloneableRepositoryFilterListProps {
   /** The account to clone from. */
@@ -77,6 +78,16 @@ interface ICloneableRepositoryFilterListProps {
     source: ClickSource
   ) => void
 
+  /**
+   * In multi-select (batch clone) mode, the set of currently selected
+   * repositories keyed by clone URL. When `onToggleRepositorySelection` is
+   * provided each row renders a checkbox reflecting this set.
+   */
+  readonly selectedRepositoryUrls?: ReadonlySet<string>
+
+  /** Called to toggle a repository in/out of the multi-select set. */
+  readonly onToggleRepositorySelection?: (repository: IAPIRepository) => void
+
   readonly renderPreFilter?: () => JSX.Element | null
 }
 
@@ -113,6 +124,55 @@ function findRepositoryForListItem(
   listItem: ICloneableRepositoryListItem
 ) {
   return repositories.find(r => r.clone_url === listItem.url) || null
+}
+
+interface ICloneableRepositoryListItemProps {
+  readonly item: ICloneableRepositoryListItem
+  readonly matches: IMatches
+  readonly repository: IAPIRepository | null
+  readonly selected: boolean
+  readonly onToggleSelection?: (repository: IAPIRepository) => void
+}
+
+/**
+ * A single row in the cloneable repositories list. In multi-select mode (when
+ * `onToggleSelection` is provided) it renders a leading checkbox.
+ */
+class CloneableRepositoryListItem extends React.Component<ICloneableRepositoryListItemProps> {
+  private onCheckboxChange = () => {
+    if (
+      this.props.onToggleSelection !== undefined &&
+      this.props.repository !== null
+    ) {
+      this.props.onToggleSelection(this.props.repository)
+    }
+  }
+
+  public render() {
+    const { item, matches, selected, onToggleSelection } = this.props
+
+    return (
+      <div className="clone-repository-list-item">
+        {onToggleSelection !== undefined && (
+          <Checkbox
+            className="clone-select-checkbox"
+            value={selected ? CheckboxValue.On : CheckboxValue.Off}
+            onChange={this.onCheckboxChange}
+          />
+        )}
+        <Octicon className="icon" symbol={item.icon} />
+        <TooltippedContent
+          className="name"
+          tooltip={item.text[0]}
+          onlyWhenOverflowed={true}
+          tagName="div"
+        >
+          <HighlightText text={item.text[0]} highlight={matches.title} />
+        </TooltippedContent>
+        {item.archived && <div className="archived">Archived</div>}
+      </div>
+    )
+  }
 }
 
 export class CloneableRepositoryFilterList extends React.PureComponent<ICloneableRepositoryFilterListProps> {
@@ -241,19 +301,20 @@ export class CloneableRepositoryFilterList extends React.PureComponent<ICloneabl
     item: ICloneableRepositoryListItem,
     matches: IMatches
   ) => {
+    const { repositories, onToggleRepositorySelection } = this.props
+    const repository =
+      repositories !== null
+        ? findRepositoryForListItem(repositories, item)
+        : null
+
     return (
-      <div className="clone-repository-list-item">
-        <Octicon className="icon" symbol={item.icon} />
-        <TooltippedContent
-          className="name"
-          tooltip={item.text[0]}
-          onlyWhenOverflowed={true}
-          tagName="div"
-        >
-          <HighlightText text={item.text[0]} highlight={matches.title} />
-        </TooltippedContent>
-        {item.archived && <div className="archived">Archived</div>}
-      </div>
+      <CloneableRepositoryListItem
+        item={item}
+        matches={matches}
+        repository={repository}
+        selected={this.props.selectedRepositoryUrls?.has(item.url) ?? false}
+        onToggleSelection={onToggleRepositorySelection}
+      />
     )
   }
 

@@ -4,6 +4,26 @@ Log append-only. Uma entrada por sessão, mais recente no topo.
 
 ---
 
+## 2026-06-23 (cont. 2) — App rodando na VM + Fase 2b (clone em lote)
+
+- **App validado na VM Windows** via `run-local.cmd` (gotchas resolvidos: Node 24 por
+  nvm + shell admin; encoding ASCII do .ps1; `#` não é comentário no cmd). Login OK,
+  todos os repos da conta aparecem.
+- **Dor do operador:** clonar ~60 repos = 60 ciclos de diálogo (inviável). Quer marcar
+  vários e clonar todos de uma vez na pasta padrão, no branch default.
+- **Fase 2b implementada** (tsc + eslint limpos):
+  - `cloneable-repository-filter-list.tsx`: checkbox por repo (modo multi via prop opcional;
+    single segue default — sem regressão). Sub-componente `CloneableRepositoryListItem`.
+  - `clone-github-repository.tsx`: repassa a seleção; rótulo do campo vira "Root folder".
+  - `clone-repository.tsx`: `selectedUrls` por aba; footer "Clone N repositories";
+    `cloneSelectedRepositories` faz loop `dispatcher.clone(clone_url, root/name, {defaultBranch})`
+    e fecha o diálogo **uma vez** só. Pasta raiz robusta (strip do repoName se há single-select);
+    persiste via `setDefaultDir`.
+- **Pendente:** testar na VM (começar com 2-3 repos). Depois Fase 2c (ajuste individual de
+  pasta por repo + aba "usuário público" com `streamPublicRepositories`).
+
+---
+
 ## 2026-06-23 (cont.) — Fase 2a (API) + design da UI de clone
 
 - **Fase 2a:** `API.streamPublicRepositories(login, …)` em `app/src/lib/api.ts` — lista repos
