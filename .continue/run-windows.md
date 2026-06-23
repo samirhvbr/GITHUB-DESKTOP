@@ -16,14 +16,24 @@ Verificar: `node -v` (v24.x), `yarn -v` (1.x), `python --version` (3.9.x).
 
 ## Subir o app
 
-```powershell
-git clone https://github.com/samirhvbr/GITHUB_DESKTOP.git   # ou via SSH
-cd GITHUB_DESKTOP
-git checkout multi-repo-dashboard      # branch com a Fase 1 + os fixes de Windows
-yarn                                    # instala deps + baixa o Electron (demora)
-yarn build:dev                          # build de desenvolvimento
-yarn start                              # lança o app (janela "GitHub Desktop-dev")
+> ⚠️ No **Prompt de Comando (cmd)** o `#` **não** é comentário. Se colar
+> `git checkout multi-repo-dashboard # ...` o git trata cada palavra do comentário como um
+> arquivo e falha (erro `pathspec ... did not match`). Cole **só o comando**, uma linha por
+> vez, sem o texto após `#`. (No PowerShell o `#` funciona normalmente.)
+
 ```
+git clone https://github.com/samirhvbr/GITHUB_DESKTOP.git
+cd GITHUB_DESKTOP
+git checkout multi-repo-dashboard
+npm install -g yarn
+yarn
+yarn build:dev
+yarn start
+```
+
+`checkout` entra na branch com a Fase 1 + fixes de Windows · `npm install -g yarn` instala o
+yarn (só p/ bootstrap; o repo usa o vendorizado) · `yarn` baixa deps + Electron (demora) ·
+`build:dev` compila · `start` abre a janela "GitHub Desktop-dev".
 
 - Mudou algo em `app/src/main-process/`? Rode `yarn build:dev` de novo, depois `yarn start`.
 - Recarregar só a UI (após mudanças no renderer): **Ctrl+Alt+R**.
