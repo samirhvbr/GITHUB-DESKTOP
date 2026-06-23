@@ -39,8 +39,8 @@ Transformar o GitHub Desktop num gerenciador **multi-repositório**. Demandas co
 node vendor/yarn-1.21.1.js install --ignore-engines   # Node local 20 < 22 exigido por uma dep
 node vendor/yarn-1.21.1.js start
 ```
-No Linux atual não há Node 24 nem nvm; o usuário roda o app de fato no **Windows**.
-Aqui o objetivo é só editar + validar tipos (`node_modules/.bin/tsc --noEmit`).
+No Linux atual não há Node 24 nem nvm; o app roda de fato no **Windows** — guia completo em
+[run-windows.md](run-windows.md). Aqui o objetivo é só editar + validar tipos (`node_modules/.bin/tsc --noEmit`).
 
 ## Branches
 
