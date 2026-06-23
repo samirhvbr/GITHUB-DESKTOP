@@ -3,6 +3,18 @@
 > Para subir o fork (branch `multi-repo-dashboard`) numa VM Windows e **validar a Fase 1
 > visualmente**. Base: `docs/contributing/setup-windows.md` + os fixes do commit `eb88c78f78`.
 
+## Atalho transparente: `run-local`
+
+Com os pré-requisitos já instalados (abaixo), suba o app com **um comando** — no estilo do
+`build-local.ps1` do shvterm:
+
+```
+run-local.cmd
+```
+
+(ou, no PowerShell: `.\run-local.ps1`). Verifica node/yarn e roda `yarn` + `build:dev` +
+`start`. Flags: `-SkipInstall` (pula o `yarn`), `-SkipBuild` (só o `start`).
+
 ## Pré-requisitos (instalar 1x na VM)
 
 | Ferramenta | Versão | Nota |
@@ -51,6 +63,10 @@ yarn (só p/ bootstrap; o repo usa o vendorizado) · `yarn` baixa deps + Electro
 
 ## Troubleshooting
 
+- **`node` / `nvm use` "não reconhecido" logo após instalar** (armadilha A-3 do builder
+  shvterm): o PATH novo não chega num terminal já aberto. **Feche e abra um cmd NOVO, como
+  Administrador** (o nvm-windows precisa de privilégio p/ fixar o symlink); aí o `nvm use 24.15.0`
+  passa a valer e persiste nos próximos shells.
 - App "trava" / não abre: apague `C:\Users\<voce>\AppData\Roaming\GitHub Desktop-dev`.
 - `yarn install` falha com "engine node incompatible": está com Node < 22 — instale o 24.15.0.
 - Erro de compilação de módulo nativo: falta o **VC++ Build Tools** / Python no PATH.
