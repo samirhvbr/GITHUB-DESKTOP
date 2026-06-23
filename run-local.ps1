@@ -1,25 +1,28 @@
 #requires -Version 5.1
 <#
-  run-local.ps1 — Sobe o dev build do GitHub Desktop (fork multi-repo) no Windows.
-  Espelha o padrão do build-local.ps1 do shvterm: verifica pré-requisitos, instala
-  as dependências e lança o app, com checagem de erro a cada passo.
+  run-local.ps1 - Sobe o dev build do GitHub Desktop (fork multi-repo) no Windows.
+  Espelha o padrao do build-local.ps1 do shvterm: verifica pre-requisitos, instala
+  as dependencias e lanca o app, com checagem de erro a cada passo.
 
-  PRÉ-REQUISITOS (instalar uma vez):
-    - Node 24.15.0   nvm-windows: `nvm install 24.15.0` ; `nvm use 24.15.0`
-                     ⚠️ precisa ser Node >= 22 (a dep `process-proxy` exige isso).
-    - Yarn (global)  `npm install -g yarn` (só p/ bootstrap; o repo usa o vendorizado).
-    - Python 3.x + VS Build Tools "Desktop development with C++" (módulos nativos).
+  Arquivo em ASCII puro de proposito: o Windows PowerShell 5.1 le .ps1 sem BOM como
+  ANSI, entao acentos/travessao quebrariam o parsing.
+
+  PRE-REQUISITOS (instalar uma vez):
+    - Node 24.15.0   nvm-windows: nvm install 24.15.0 ; nvm use 24.15.0
+                     Precisa ser Node >= 22 (a dep process-proxy exige isso).
+    - Yarn (global)  npm install -g yarn (so p/ bootstrap; o repo usa o vendorizado).
+    - Python 3.x + VS Build Tools "Desktop development with C++" (modulos nativos).
 
   USO (PowerShell, na raiz do repo):
     .\run-local.ps1                # yarn (se preciso) + build:dev + start
-    .\run-local.ps1 -SkipInstall   # pula 'yarn' (deps já instaladas)
-    .\run-local.ps1 -SkipBuild     # pula 'yarn build:dev' (só 'yarn start')
+    .\run-local.ps1 -SkipInstall   # pula 'yarn' (deps ja instaladas)
+    .\run-local.ps1 -SkipBuild     # pula 'yarn build:dev' (so 'yarn start')
 
   Do cmd, sem mexer na ExecutionPolicy, use o wrapper:  run-local.cmd
 
-  ARMADILHA do nvm-windows (= A-3 do builder shvterm): se `node`/`nvm use` derem
-  "não reconhecido", ABRA UM SHELL NOVO (de preferência como Administrador) — o PATH
-  novo / o symlink do nvm não chegam num terminal já aberto. `nvm use` persiste depois.
+  ARMADILHA do nvm-windows (= A-3 do builder shvterm): se node/nvm use derem
+  "nao reconhecido", ABRA UM SHELL NOVO (de preferencia como Administrador) - o PATH
+  novo / o symlink do nvm nao chegam num terminal ja aberto. nvm use persiste depois.
 #>
 param(
   [switch]$SkipInstall,
@@ -29,8 +32,8 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot   # raiz do repo
 
-# PowerShell 5.1 não trata exit code != 0 de comando nativo (yarn/node) como erro
-# terminante. Sem este check, um passo falho passa batido. Chame após cada passo crítico.
+# PowerShell 5.1 nao trata exit code != 0 de comando nativo (yarn/node) como erro
+# terminante. Sem este check, um passo falho passa batido. Chame apos cada passo critico.
 function Assert-Ok([string]$step) {
   if ($LASTEXITCODE -ne 0) { throw "$step falhou (exit $LASTEXITCODE). Corrija o erro acima e rode de novo." }
 }
@@ -43,7 +46,7 @@ if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
 $nodeVer   = (node -v).TrimStart('v')
 $nodeMajor = [int]($nodeVer.Split('.')[0])
 if ($nodeMajor -lt 22) {
-  throw "Node $nodeVer e antigo demais — o projeto exige Node >= 22 (ideal 24.15.0). Rode 'nvm use 24.15.0' num shell novo (admin)."
+  throw "Node $nodeVer e antigo demais. O projeto exige Node >= 22 (ideal 24.15.0). Rode 'nvm use 24.15.0' num shell novo (admin)."
 }
 Write-Host "    node v$nodeVer OK" -ForegroundColor Green
 
@@ -69,6 +72,6 @@ if (-not $SkipBuild) {
   Write-Host "==> [2/3] build:dev PULADO (-SkipBuild)" -ForegroundColor Yellow
 }
 
-Write-Host "==> [3/3] yarn start — abre a janela 'GitHub Desktop-dev'." -ForegroundColor Cyan
+Write-Host "==> [3/3] yarn start - abre a janela 'GitHub Desktop-dev'." -ForegroundColor Cyan
 Write-Host "         (recarregar a UI apos mudancas: Ctrl+Alt+R)" -ForegroundColor DarkGray
 yarn start
