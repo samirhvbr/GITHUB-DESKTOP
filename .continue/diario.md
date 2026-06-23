@@ -4,6 +4,20 @@ Log append-only. Uma entrada por sessão, mais recente no topo.
 
 ---
 
+## 2026-06-23 (cont.) — Fase 2a (API) + design da UI de clone
+
+- **Fase 2a:** `API.streamPublicRepositories(login, …)` em `app/src/lib/api.ts` — lista repos
+  públicos de um usuário arbitrário (`users/{login}/repos`), espelhando `streamUserRepositories`.
+  Validado (tsc + eslint).
+- **Decisão:** a UI de clone (multi-seleção + clone em lote + aba "usuário público") é uma
+  refatoração grande de componente central (`clone-repository.tsx` tem `selectedItem` single
+  por aba) e **não dá p/ validar visualmente no Linux**. Em vez de despejar UI não-validável
+  numa sessão já longa, escrevi o design de implementação em `fase2-clone-design.md` para a
+  próxima sessão executar rápido e com segurança.
+- Snapshot `README_20260623.md` atualizado p/ o estado de fim do dia.
+
+---
+
 ## 2026-06-23 — Demandas mapeadas + Fase 1 (dashboard) implementada
 
 - **Demandas** detalhadas pelo operador em `SAMIR-PROJETO.md` (6 + 1 futura).

@@ -27,10 +27,11 @@ Transformar o GitHub Desktop num gerenciador **multi-repositório**. Demandas co
 
 - ✅ Ambiente de dev: fix do `yarn start` (commit `eb88c78f78`).
 - ✅ `.continue/` criada, commitada e pushada (sobrevive a re-clones).
-- ✅ Investigação técnica do código (4 eixos) — sintetizada em [plano-tecnico.md](plano-tecnico.md).
-- ✅ Descoberta-chave: a infra de status multi-repo (`localRepositoryStateLookup` +
-  `RepositoryIndicatorUpdater`) **já existe** no app.
-- 🔄 **Fase 1 (dashboard)** em implementação.
+- ✅ Investigação técnica (4 eixos) → [plano-tecnico.md](plano-tecnico.md).
+- ✅ **Fase 1 (dashboard)** implementada, validada (tsc + eslint) e pushada.
+- ✅ **Fase 2a:** `API.streamPublicRepositories` (repos públicos por usuário) — validada.
+- 📋 **Fase 2 (UI de clone)** desenhada em [fase2-clone-design.md](fase2-clone-design.md) — pronta p/ executar.
+- ⏳ Validação **visual** da Fase 1 pendente (rodar no Windows).
 
 ## Como rodar (dev)
 
@@ -50,6 +51,7 @@ Aqui o objetivo é só editar + validar tipos (`node_modules/.bin/tsc --noEmit`)
 
 ## Próximos passos
 
-- [ ] Fase 1 — dashboard (em andamento): nova `UiView` + estado `showMultiRepoDashboard` + ponto de entrada.
-- [ ] Validar com `tsc --noEmit` assim que o install terminar; depois commitar.
-- [ ] Fase 2 — clone seletivo (demandas 3-5). Fase 3 — push agendado (demanda 6). Ver [plano-tecnico.md](plano-tecnico.md).
+- [ ] **Validação visual da Fase 1** — rodar `yarn start` no Windows e conferir o dashboard.
+- [ ] **Fase 2 (UI):** seguir [fase2-clone-design.md](fase2-clone-design.md) — multi-seleção +
+      clone em lote por pasta raiz, depois a aba "usuário público".
+- [ ] **Fase 3:** push agendado + auto-commit opt-in — ver [plano-tecnico.md](plano-tecnico.md).
