@@ -67,6 +67,12 @@ yarn (só p/ bootstrap; o repo usa o vendorizado) · `yarn` baixa deps + Electro
   shvterm): o PATH novo não chega num terminal já aberto. **Feche e abra um cmd NOVO, como
   Administrador** (o nvm-windows precisa de privilégio p/ fixar o symlink); aí o `nvm use 24.15.0`
   passa a valer e persiste nos próximos shells.
-- App "trava" / não abre: apague `C:\Users\<voce>\AppData\Roaming\GitHub Desktop-dev`.
+- **App sobe mas não abre janela** (o terminal mostra "Server running at http://localhost:3000"
+  + erros de "toast activator"/notifications — esses são **conhecidos e não-fatais**): quase
+  sempre é uma **instância anterior do dev ainda viva** segurando o lock de instância única.
+  Confira primeiro com **Alt+Tab** (a janela pode estar atrás do terminal). Se não houver,
+  abra o **Gerenciador de Tarefas** (Ctrl+Shift+Esc) e finalize os processos "GitHub Desktop-dev"
+  / "electron". Reabra rápido (sem rebuild) com `run-local.cmd -SkipInstall -SkipBuild`.
+- App "trava" / continua não abrindo: apague `C:\Users\<voce>\AppData\Roaming\GitHub Desktop-dev`.
 - `yarn install` falha com "engine node incompatible": está com Node < 22 — instale o 24.15.0.
 - Erro de compilação de módulo nativo: falta o **VC++ Build Tools** / Python no PATH.
