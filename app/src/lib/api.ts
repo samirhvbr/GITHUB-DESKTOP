@@ -1065,6 +1065,35 @@ export class API {
     }
   }
 
+  /**
+   * Fetch the public repositories owned by an arbitrary user (by login) in a
+   * streaming fashion, page by page. Targets `users/{login}/repos`, so it works
+   * for any user — not just the authenticated account — returning the
+   * repositories visible to the current token (the public ones for other users).
+   */
+  public async streamPublicRepositories(
+    login: string,
+    callback: (repos: ReadonlyArray<IAPIRepository>) => void,
+    options?: IFetchAllOptions<IAPIRepository>
+  ) {
+    try {
+      const path = `users/${encodeURIComponent(login)}/repos`
+
+      await this.fetchAll<IAPIRepository>(path, {
+        ...options,
+        onPage: page => {
+          callback(page.filter(x => x.owner !== null))
+          options?.onPage?.(page)
+        },
+      })
+    } catch (error) {
+      log.warn(
+        `streamPublicRepositories: failed for '${login}' with endpoint ${this.endpoint}`,
+        error
+      )
+    }
+  }
+
   /** Fetch the logged in account. */
   public async fetchAccount(): Promise<IAPIFullIdentity> {
     try {
