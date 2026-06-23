@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment_perfil": "PERFIL FABLE-5 — Claude Fable 5 no model e nos subagentes; fallback Opus. Janela 1M nativa (Fable 5 roda 1M na API Anthropic). Effort 'max' via env CLAUDE_CODE_EFFORT_LEVEL (o campo effortLevel so aceita low/medium/high/xhigh). Thinking no Fable 5 e SEMPRE adaptativo (CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING nao tem efeito). CREDITOS: Fable 5 incluso no Max ate ~22/jun/2026; depois consome creditos de uso (~2x o Opus) — confirme antes de rodar pesado. Requer Claude Code v2.1.170+.",
+  "model": "fable",
+  "fallbackModel": ["opus"],
+  "env": {
+    "CLAUDE_CODE_SUBAGENT_MODEL": "fable",
+    "ANTHROPIC_DEFAULT_FABLE_MODEL": "claude-fable-5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-4-8",
+    "CLAUDE_CODE_EFFORT_LEVEL": "max"
+  },
+  "permissions": {
+    "_comment": "Permissoes do projeto - GitHub Desktop (yarn / TypeScript / Electron)",
+    "defaultMode": "plan",
+    "allow": [
+      "Read",
+      "Edit",
+      "Write",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(yarn install:*)",
+      "Bash(yarn lint:*)",
+      "Bash(yarn prettier:*)",
+      "Bash(yarn markdownlint:*)",
+      "Bash(yarn test:*)",
+      "Bash(yarn compile:*)",
+      "Bash(yarn build:*)",
+      "Bash(yarn start:*)",
+      "Bash(yarn cli:*)",
+      "Bash(yarn validate-changelog:*)",
+      "Bash(yarn validate-electron-version:*)",
+      "Bash(yarn validate-macos-version:*)",
+      "Bash(node -c:*)",
+      "Bash(npx tsc:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/*.pem)",
+      "Bash(rm -rf:*)",
+      "Bash(rm -rf /:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git reset --hard:*)",
+      "Bash(git clean -fd:*)",
+      "Bash(curl * | sh:*)",
+      "Bash(curl * | bash:*)",
+      "Bash(wget * | sh:*)"
+    ],
+    "ask": [
+      "Bash(sudo:*)",
+      "Bash(git push:*)",
+      "Bash(yarn add:*)",
+      "Bash(yarn remove:*)",
+      "Bash(yarn upgrade:*)",
+      "Bash(yarn clean-slate:*)",
+      "Bash(yarn rebuild-hard:*)"
+    ]
+  }
+}

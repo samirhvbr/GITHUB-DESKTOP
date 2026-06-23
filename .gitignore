@@ -20,3 +20,6 @@ junit*.xml
 *.swp
 tslint-rules/
 playwright-videos/
+
+# Claude Code — config local da sessao (perfil/allows acumulados)
+.claude/settings.local.json
