@@ -129,35 +129,26 @@ function findRepositoryForListItem(
 interface ICloneableRepositoryListItemProps {
   readonly item: ICloneableRepositoryListItem
   readonly matches: IMatches
-  readonly repository: IAPIRepository | null
+  readonly multiSelect: boolean
   readonly selected: boolean
-  readonly onToggleSelection?: (repository: IAPIRepository) => void
 }
 
 /**
- * A single row in the cloneable repositories list. In multi-select mode (when
- * `onToggleSelection` is provided) it renders a leading checkbox.
+ * A single row in the cloneable repositories list. In multi-select mode it
+ * renders a leading checkbox reflecting whether the repository is selected. The
+ * checkbox is a visual indicator only — clicking anywhere on the row toggles
+ * the selection (handled by the list's onItemClick).
  */
 class CloneableRepositoryListItem extends React.Component<ICloneableRepositoryListItemProps> {
-  private onCheckboxChange = () => {
-    if (
-      this.props.onToggleSelection !== undefined &&
-      this.props.repository !== null
-    ) {
-      this.props.onToggleSelection(this.props.repository)
-    }
-  }
-
   public render() {
-    const { item, matches, selected, onToggleSelection } = this.props
+    const { item, matches, multiSelect, selected } = this.props
 
     return (
       <div className="clone-repository-list-item">
-        {onToggleSelection !== undefined && (
+        {multiSelect && (
           <Checkbox
             className="clone-select-checkbox"
             value={selected ? CheckboxValue.On : CheckboxValue.Off}
-            onChange={this.onCheckboxChange}
           />
         )}
         <Octicon className="icon" symbol={item.icon} />
@@ -247,7 +238,13 @@ export class CloneableRepositoryFilterList extends React.PureComponent<ICloneabl
         renderNoItems={this.renderNoItems}
         renderPostFilter={this.renderPostFilter}
         renderPreFilter={this.props.renderPreFilter}
-        onItemClick={this.props.onItemClicked ? this.onItemClick : undefined}
+        onItemClick={
+          this.props.onToggleRepositorySelection !== undefined
+            ? this.onItemClickToggle
+            : this.props.onItemClicked
+            ? this.onItemClick
+            : undefined
+        }
         placeholderText={'Filter your repositories'}
         getGroupAriaLabel={this.getGroupAriaLabelGetter(groups)}
       />
@@ -272,12 +269,30 @@ export class CloneableRepositoryFilterList extends React.PureComponent<ICloneabl
   }
 
   private onSelectionChanged = (item: ICloneableRepositoryListItem | null) => {
+    // In multi-select (batch clone) mode the row selection doesn't drive the
+    // single clone path; the selection is toggled via onItemClick instead.
+    if (this.props.onToggleRepositorySelection !== undefined) {
+      return
+    }
+
     if (item === null || this.props.repositories === null) {
       this.props.onSelectionChanged(null)
     } else {
       this.props.onSelectionChanged(
         findRepositoryForListItem(this.props.repositories, item)
       )
+    }
+  }
+
+  private onItemClickToggle = (item: ICloneableRepositoryListItem) => {
+    const { onToggleRepositorySelection, repositories } = this.props
+    if (onToggleRepositorySelection === undefined || repositories === null) {
+      return
+    }
+
+    const repository = findRepositoryForListItem(repositories, item)
+    if (repository !== null) {
+      onToggleRepositorySelection(repository)
     }
   }
 
@@ -301,19 +316,12 @@ export class CloneableRepositoryFilterList extends React.PureComponent<ICloneabl
     item: ICloneableRepositoryListItem,
     matches: IMatches
   ) => {
-    const { repositories, onToggleRepositorySelection } = this.props
-    const repository =
-      repositories !== null
-        ? findRepositoryForListItem(repositories, item)
-        : null
-
     return (
       <CloneableRepositoryListItem
         item={item}
         matches={matches}
-        repository={repository}
+        multiSelect={this.props.onToggleRepositorySelection !== undefined}
         selected={this.props.selectedRepositoryUrls?.has(item.url) ?? false}
-        onToggleSelection={onToggleRepositorySelection}
       />
     )
   }

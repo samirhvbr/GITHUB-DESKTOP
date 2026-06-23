@@ -18,6 +18,13 @@
   }
 
   .clone-repository-list-item {
+    .clone-select-checkbox {
+      flex-shrink: 0;
+      margin-right: var(--spacing-half);
+      // Visual indicator only — clicking anywhere on the row toggles selection.
+      pointer-events: none;
+    }
+
     .name {
       flex-grow: 1;
     }
