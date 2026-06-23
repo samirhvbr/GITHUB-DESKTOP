@@ -5,62 +5,51 @@
 
 ## Projeto
 
-Fork pessoal do **GitHub Desktop** — `git@github.com:samirhvbr/GITHUB_DESKTOP.git`.
-App **Electron + TypeScript + React**. Build com **yarn** / **Node 24.15.0**.
+Fork pessoal do **GitHub Desktop** (`3.5.13-beta3`) — `git@github.com:samirhvbr/GITHUB_DESKTOP.git`.
+App **Electron + TypeScript + React**. Build com **yarn** vendorizado (`vendor/yarn-1.21.1.js`).
+⚠️ Node: o projeto pede **24.15.0** (`.nvmrc`); uma dep (`process-proxy`) exige **≥22**.
 
-## Objetivo da feature ✅ (confirmado 2026-06-23)
+## Objetivo
 
-Branch de trabalho: **`multi-repo-dashboard`**.
+Transformar o GitHub Desktop num gerenciador **multi-repositório**. Demandas completas em
+[SAMIR-PROJETO.md](SAMIR-PROJETO.md); plano de execução com ponteiros de código em
+[plano-tecnico.md](plano-tecnico.md). Resumo:
 
-Um **painel de status agregado**: uma tela nova que lista **todos os repositórios**
-adicionados ao GitHub Desktop de uma vez, mostrando para cada um:
-
-- branch atual;
-- ahead/behind em relação ao remoto (↑ / ↓);
-- nº de alterações não commitadas (working tree);
-- último fetch.
-
-Visão panorâmica de "o que precisa de atenção". Clicar num repo abre a visão normal
-dele (comportamento atual). O GitHub Desktop hoje só opera um repositório por vez.
+1. Listar todos os repos num painel.
+2. Destacar repos com demanda (commit pendente / atrás do remoto → precisa pull).
+3. Login + clone seletivo (escolher repos e pasta raiz ou individual).
+4. Clone de enterprise/corporativo + do usuário.
+5. Clone de repos públicos por nome de usuário.
+6. Agendar push automático + commit "padrão" opt-in.
+- Futura: login centralizador remoto (estilo sshvterm).
 
 ## Onde paramos (2026-06-23)
 
-- ✅ Ambiente de dev **funcionando**: `yarn start` abre a janela do dev build.
-- ✅ Config Claude Code criada (`.claude/`, perfil Opus).
-- ⬜ Feature **ainda não iniciada** — nenhum código de "multi-repo dashboard" existe.
-  A branch só tem **1 commit** além de `development`: o fix de build abaixo.
-
-## Único commit da feature até agora
-
-`eb88c78f78 — Fix dev build launch on Windows` (2026-06-23):
-- `script/run.ts`: remove `ELECTRON_RUN_AS_NODE` do env do binário lançado — senão o
-  Electron empacotado roda como Node puro, `app` fica `undefined` e o processo fecha
-  sem abrir janela.
-- `app/src/main-process/main.ts`: em dev, `userData` aponta para `GitHub Desktop-dev`
-  — lock de instância próprio, roda lado a lado com o GitHub Desktop de produção.
+- ✅ Ambiente de dev: fix do `yarn start` (commit `eb88c78f78`).
+- ✅ `.continue/` criada, commitada e pushada (sobrevive a re-clones).
+- ✅ Investigação técnica do código (4 eixos) — sintetizada em [plano-tecnico.md](plano-tecnico.md).
+- ✅ Descoberta-chave: a infra de status multi-repo (`localRepositoryStateLookup` +
+  `RepositoryIndicatorUpdater`) **já existe** no app.
+- 🔄 **Fase 1 (dashboard)** em implementação.
 
 ## Como rodar (dev)
 
 ```bash
-nvm use            # Node 24.15.0
-yarn               # instala deps
-yarn start         # abre o dev build (perfil isolado "GitHub Desktop-dev")
+node vendor/yarn-1.21.1.js install --ignore-engines   # Node local 20 < 22 exigido por uma dep
+node vendor/yarn-1.21.1.js start
 ```
+No Linux atual não há Node 24 nem nvm; o usuário roda o app de fato no **Windows**.
+Aqui o objetivo é só editar + validar tipos (`node_modules/.bin/tsc --noEmit`).
 
 ## Branches
 
 | Branch | Papel |
 |--------|-------|
 | `development` | Base; espelha o upstream `desktop/desktop`. |
-| `multi-repo-dashboard` | Feature. Hoje = `development` + fix de build. **Branch de trabalho.** |
+| `multi-repo-dashboard` | Feature. **Branch de trabalho.** |
 
 ## Próximos passos
 
-- [x] ~~Confirmar a visão~~ → **painel de status agregado** (2026-06-23).
-- [ ] `git checkout multi-repo-dashboard` para trabalhar na branch certa (estamos em `development`).
-- [ ] Rodar `yarn start` no **Linux** e confirmar que o fix (feito no Windows) também vale aqui.
-- [ ] **Investigação técnica:** mapear onde o status de cada repo é computado
-      (lista de repos, `git status`, ahead/behind, último fetch). Ponto de partida
-      provável: `app/src/lib/stores` (AppStore / RepositoriesStore).
-- [ ] Desenhar onde o painel encaixa na UI (view nova vs. tela de "nenhum repo selecionado").
-- [ ] Quebrar em tarefas e implementar.
+- [ ] Fase 1 — dashboard (em andamento): nova `UiView` + estado `showMultiRepoDashboard` + ponto de entrada.
+- [ ] Validar com `tsc --noEmit` assim que o install terminar; depois commitar.
+- [ ] Fase 2 — clone seletivo (demandas 3-5). Fase 3 — push agendado (demanda 6). Ver [plano-tecnico.md](plano-tecnico.md).
