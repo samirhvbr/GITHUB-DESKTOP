@@ -1,0 +1,108 @@
+#multi-repo-dashboard {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+
+  .multi-repo-dashboard-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: var(--spacing-double);
+    border-bottom: var(--base-border);
+
+    h1 {
+      margin: 0;
+      font-size: var(--font-size-lg);
+      font-weight: var(--font-weight-semibold);
+    }
+
+    .summary {
+      margin-top: var(--spacing-half);
+      color: var(--text-secondary-color);
+      font-size: var(--font-size-sm);
+    }
+  }
+
+  .multi-repo-dashboard-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing);
+
+    .empty-message {
+      padding: var(--spacing-double);
+      color: var(--text-secondary-color);
+      text-align: center;
+    }
+  }
+
+  .repo-row {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing);
+    width: 100%;
+    padding: var(--spacing);
+    border: none;
+    border-radius: var(--border-radius);
+    background: transparent;
+    color: var(--text-color);
+    text-align: left;
+    cursor: pointer;
+    font-size: var(--font-size);
+
+    &:hover {
+      background: var(--list-item-hover-background-color);
+    }
+
+    &:focus {
+      outline: none;
+      box-shadow: 0 0 0 2px var(--focus-color);
+    }
+
+    .repo-icon {
+      flex-shrink: 0;
+      color: var(--text-secondary-color);
+    }
+
+    .repo-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .repo-indicators {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing);
+      flex-shrink: 0;
+
+      .indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-quarter);
+        font-size: var(--font-size-sm);
+
+        .octicon {
+          width: 12px;
+          height: 12px;
+        }
+
+        &.changes {
+          color: var(--dialog-warning-color);
+        }
+
+        &.behind {
+          color: var(--dialog-error-color);
+        }
+
+        &.ahead {
+          color: var(--text-secondary-color);
+        }
+
+        &.clean {
+          color: var(--ahead-behind-fill-color);
+        }
+      }
+    }
+  }
+}

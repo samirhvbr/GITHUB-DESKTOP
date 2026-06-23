@@ -92,6 +92,7 @@ import { Publish } from './publish-repository'
 import { Acknowledgements } from './acknowledgements'
 import { UntrustedCertificate } from './untrusted-certificate'
 import { NoRepositoriesView } from './no-repositories'
+import { MultiRepoDashboard } from './multi-repo-dashboard/multi-repo-dashboard'
 import { ConfirmRemoveRepository } from './remove-repository'
 import { TermsAndConditions } from './terms-and-conditions'
 import { PushBranchCommits } from './branches'
@@ -3223,6 +3224,7 @@ export class App extends React.Component<IAppProps, IAppState> {
         onOpenInExternalEditor={this.openInExternalEditor}
         externalEditorLabel={this.externalEditorLabel}
         shellLabel={useCustomShell ? undefined : selectedShell}
+        onShowMultiRepoDashboard={this.onShowMultiRepoDashboard}
         dispatcher={this.props.dispatcher}
       />
     )
@@ -3304,6 +3306,20 @@ export class App extends React.Component<IAppProps, IAppState> {
     } else {
       this.props.dispatcher.closeFoldout(FoldoutType.Repository)
     }
+  }
+
+  private onShowMultiRepoDashboard = () => {
+    this.props.dispatcher.closeFoldout(FoldoutType.Repository)
+    this.props.dispatcher.setMultiRepoDashboardVisible(true)
+  }
+
+  private onDashboardSelectRepository = (repository: Repository) => {
+    this.props.dispatcher.setMultiRepoDashboardVisible(false)
+    this.props.dispatcher.selectRepository(repository)
+  }
+
+  private onCloseMultiRepoDashboard = () => {
+    this.props.dispatcher.setMultiRepoDashboardVisible(false)
   }
 
   private onExitTutorial = () => {
@@ -3775,6 +3791,17 @@ export class App extends React.Component<IAppProps, IAppState> {
           tutorialPaused={this.isTutorialPaused()}
           apiRepositories={this.state.apiRepositories}
           onRefreshRepositories={this.onRefreshRepositories}
+        />
+      )
+    }
+
+    if (this.state.showMultiRepoDashboard) {
+      return (
+        <MultiRepoDashboard
+          repositories={this.state.repositories}
+          localRepositoryStateLookup={this.state.localRepositoryStateLookup}
+          onSelectRepository={this.onDashboardSelectRepository}
+          onClose={this.onCloseMultiRepoDashboard}
         />
       )
     }

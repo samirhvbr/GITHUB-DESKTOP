@@ -74,6 +74,9 @@ interface IRepositoriesListProps {
   /** The text entered by the user to filter their repository list */
   readonly filterText: string
 
+  /** Called to open the multi-repo dashboard (aggregate view of all repos). */
+  readonly onShowMultiRepoDashboard?: () => void
+
   readonly dispatcher: Dispatcher
 }
 
@@ -370,15 +373,27 @@ export class RepositoriesList extends React.Component<
 
   private renderPostFilter = () => {
     return (
-      <Button
-        className="new-repository-button"
-        onClick={this.onNewRepositoryButtonClick}
-        ariaExpanded={this.state.newRepositoryMenuExpanded}
-        onKeyDown={this.onNewRepositoryButtonKeyDown}
-      >
-        Add
-        <Octicon symbol={octicons.triangleDown} />
-      </Button>
+      <>
+        {this.props.onShowMultiRepoDashboard !== undefined && (
+          <Button
+            className="show-multi-repo-dashboard-button"
+            onClick={this.props.onShowMultiRepoDashboard}
+            tooltip="Ver painel com todos os repositórios"
+            ariaLabel="Ver painel com todos os repositórios"
+          >
+            <Octicon symbol={octicons.listUnordered} />
+          </Button>
+        )}
+        <Button
+          className="new-repository-button"
+          onClick={this.onNewRepositoryButtonClick}
+          ariaExpanded={this.state.newRepositoryMenuExpanded}
+          onKeyDown={this.onNewRepositoryButtonKeyDown}
+        >
+          Add
+          <Octicon symbol={octicons.triangleDown} />
+        </Button>
+      </>
     )
   }
 

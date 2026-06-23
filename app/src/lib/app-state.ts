@@ -103,6 +103,12 @@ export interface IAppState {
    */
   readonly localRepositoryStateLookup: Map<number, ILocalRepositoryState>
 
+  /**
+   * Whether the multi-repo dashboard (an aggregate view of all repositories) is
+   * being shown in place of the selected repository's view.
+   */
+  readonly showMultiRepoDashboard: boolean
+
   readonly selectedState: PossibleSelections | null
 
   /**

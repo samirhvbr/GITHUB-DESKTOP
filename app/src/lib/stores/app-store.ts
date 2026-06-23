@@ -567,6 +567,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
   private readonly repositoryIndicatorUpdater: RepositoryIndicatorUpdater
 
   private showWelcomeFlow = false
+  private multiRepoDashboardVisible = false
   private focusCommitMessage = false
   private currentFoldout: Foldout | null = null
   private currentBanner: Banner | null = null
@@ -1187,6 +1188,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       repositories,
       recentRepositories: this.recentRepositories,
       localRepositoryStateLookup: this.localRepositoryStateLookup,
+      showMultiRepoDashboard: this.multiRepoDashboardVisible,
       windowState: this.windowState,
       windowZoomFactor: this.windowZoomFactor,
       appIsFocused: this.appIsFocused,
@@ -4139,6 +4141,11 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public _setShowCommitLengthWarning(showCommitLengthWarning: boolean) {
     setBoolean(showCommitLengthWarningKey, showCommitLengthWarning)
     this.showCommitLengthWarning = showCommitLengthWarning
+    this.emitUpdate()
+  }
+
+  public _setMultiRepoDashboardVisible(visible: boolean) {
+    this.multiRepoDashboardVisible = visible
     this.emitUpdate()
   }
 

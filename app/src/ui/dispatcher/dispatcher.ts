@@ -2913,6 +2913,11 @@ export class Dispatcher {
     this.appStore._setShowCommitLengthWarning(showCommitLengthWarning)
   }
 
+  /** Show or hide the multi-repo dashboard (aggregate view of all repositories). */
+  public setMultiRepoDashboardVisible(visible: boolean) {
+    this.appStore._setMultiRepoDashboardVisible(visible)
+  }
+
   public setNotificationsEnabled(notificationsEnabled: boolean) {
     this.appStore._setNotificationsEnabled(notificationsEnabled)
   }
