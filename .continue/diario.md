@@ -4,6 +4,32 @@ Log append-only. Uma entrada por sessão, mais recente no topo.
 
 ---
 
+## 2026-06-23 (cont. 4) — Polimentos + Select all + versionamento (tudo testado no app)
+
+- **App rodando no Windows** (Node 24.16, yarn vendorizado). Validado de ponta a ponta.
+- **Polimentos do clone em lote** (feedback do teste anterior), todos com tsc+eslint limpos:
+  1. **Scroll não volta mais ao topo** ao marcar — causa: em modo multi o `selectedItem`
+     ficava `null` e o `selectedRow` interno da `SectionFilterList` era zerado a cada
+     re-render. Fix: `onToggleRepository` agora também marca o repo clicado como linha
+     ativa (`selectedItem`); `rootPath = path` direto. **Validado no app.**
+  2. **Mais leve:** `CloneableRepositoryListItem` virou `PureComponent` + `matches`
+     referencialmente estável (`emptyMatches`) na `SectionFilterList`.
+  3. **Pular existentes:** `cloneSelectedRepositories` async valida cada destino com
+     `validateEmptyFolder`; existentes são pulados e avisados via **banner** novo
+     (`BannerType.BatchCloneSkippedExisting`, reusa `SuccessBanner`), sem o popup de erro.
+- **Select all** (tri-state On/Off/Mixed, respeita o filtro de busca) no clone em lote —
+  novo `onSetRepositoriesSelected` + `getVisibleRepositoryUrls` (mesma fuzzy `match` da lista).
+  **Validado no app: "funcionou perfeitamente".**
+- **Versionamento do fork:** `VERSION.md` (raiz) + `app/src/lib/fork-version.ts`
+  (`ForkVersion=0.3.0`, `ForkName=Multi-Repo`). Exibido na tela "Let's get started!" e no
+  **About** ("Multi-Repo fork v0.3.0"). **Validado no About.**
+- **Gotcha:** `Ctrl+Alt+R` (reload da UI) não funcionou nesta build; `Ctrl+R` faz reload
+  total e **encerra** o dev. Caminho confiável: fechar e reabrir (`run-local`/`yarn start`).
+- **Próximo (PRIORIDADE do operador):** **Pull/Push em lote + status agregado** dos repos
+  selecionados/todos no dashboard (quem falta commitar / está atrás do remoto).
+
+---
+
 ## 2026-06-23 (cont. 3) — Clone em lote TESTADO e funcionando na VM
 
 - ✅ **Clone em lote validado na VM Windows**: marcar vários repos (clique na linha) +

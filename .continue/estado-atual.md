@@ -23,15 +23,23 @@ Transformar o GitHub Desktop num gerenciador **multi-repositório**. Demandas co
 6. Agendar push automático + commit "padrão" opt-in.
 - Futura: login centralizador remoto (estilo sshvterm).
 
-## Onde paramos (2026-06-23)
+## Versão do fork
 
-- ✅ Ambiente de dev: fix do `yarn start` (commit `eb88c78f78`).
-- ✅ `.continue/` criada, commitada e pushada (sobrevive a re-clones).
-- ✅ Investigação técnica (4 eixos) → [plano-tecnico.md](plano-tecnico.md).
-- ✅ **Fase 1 (dashboard)** implementada, validada (tsc + eslint) e pushada.
-- ✅ **Fase 2a:** `API.streamPublicRepositories` (repos públicos por usuário) — validada.
-- 📋 **Fase 2 (UI de clone)** desenhada em [fase2-clone-design.md](fase2-clone-design.md) — pronta p/ executar.
-- ⏳ Validação **visual** da Fase 1 pendente (rodar no Windows).
+**v0.3.0** (`app/src/lib/fork-version.ts`; changelog em [VERSION.md](../VERSION.md)).
+Aparece na tela "Let's get started!" e no diálogo **About**. Independente da
+versão upstream (`app/package.json` = `3.5.13-beta3`).
+
+## Onde paramos (2026-06-23, cont. 4)
+
+- ✅ Ambiente de dev rodando no Windows (Node 24, yarn vendorizado; `run-local`).
+- ✅ **Fase 1 (dashboard)** + **Fase 2b (clone em lote)** validadas no app.
+- ✅ **Polimentos do clone em lote** (testados): (1) scroll não volta mais ao topo
+  ao marcar; (2) lista mais leve (`PureComponent` + `matches` estável); (3) repos
+  já existentes são **pulados com banner**, não popup de erro.
+- ✅ **Select all** (tri-state, respeita filtro) no clone em lote — validado.
+- ✅ **Versionamento** do fork (VERSION.md + visível na UI) — validado.
+- 📋 **Fase 2 (UI de clone restante)** em [fase2-clone-design.md](fase2-clone-design.md):
+  aba "usuário público" + pasta individual por repo — ainda pendente.
 
 ## Como rodar (dev)
 
@@ -51,10 +59,16 @@ No Linux atual não há Node 24 nem nvm; o app roda de fato no **Windows** — g
 
 ## Próximos passos
 
-- [x] Fase 1 (dashboard) e **Fase 2b (clone em lote)** — implementadas e **testadas na VM**. ✅
-- [ ] **Polir o clone em lote** (feedback do teste): (1) scroll não voltar ao topo a cada
-      seleção; (2) reduzir "peso" (item PureComponent + fechar o DevTools em dev); (3) **pular**
-      repos que já existem, com aviso, em vez do popup de erro "Retry clone".
+> Todo o `.continue` segue no roadmap, mas a **prioridade atual** é o item de ações em lote.
+
+- [ ] **PRIORIDADE — Pull/Push em lote + status agregado:** no dashboard multi-repo,
+      selecionar vários repos e fazer **Pull all / Push all**; mostrar um **status de
+      todos (ou dos selecionados)** destacando quem tem commit pendente (working dir sujo)
+      ou está atrás/à frente do remoto. Reusa `dispatcher.pull/push(repo)` +
+      `localRepositoryStateLookup` (ver [plano-tecnico.md](plano-tecnico.md)).
+- [x] Polimentos do clone em lote (scroll, leveza, pular existentes) — feito.
+- [x] **Select all** no clone em lote — feito.
+- [x] Versionamento do fork (VERSION.md + UI) — feito (v0.3.0).
 - [ ] **Fase 2c:** ajuste individual de pasta por repo + aba "usuário público" (`streamPublicRepositories`).
 - [ ] **Fase 3:** push agendado + auto-commit opt-in — ver [plano-tecnico.md](plano-tecnico.md).
-- [ ] **Requisito novo (SAMIR-PROJETO):** garantir multiplataforma — Windows / macOS / Linux (Gnome, Debian Trixie).
+- [ ] **Multiplataforma** (SAMIR-PROJETO): Windows / macOS / Linux (Gnome, Debian Trixie).

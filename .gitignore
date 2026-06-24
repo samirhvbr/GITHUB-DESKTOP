@@ -23,3 +23,6 @@ playwright-videos/
 
 # Claude Code — config local da sessao (perfil/allows acumulados)
 .claude/settings.local.json
+
+# .continue — logs transitorios de build/start do dev (nao versionar)
+.continue/_*.log
