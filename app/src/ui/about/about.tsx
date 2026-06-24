@@ -13,6 +13,7 @@ import { IUpdateState, UpdateStatus } from '../lib/update-store'
 import { Loading } from '../lib/loading'
 import { RelativeTime } from '../relative-time'
 import { assertNever } from '../../lib/fatal-error'
+import { ForkName, ForkVersion } from '../../lib/fork-version'
 import { ReleaseNotesUri } from '../lib/releases'
 import { encodePathAsUrl } from '../../lib/path'
 import { isOSNoLongerSupportedByElectron } from '../../lib/get-os'
@@ -281,6 +282,11 @@ export class About extends React.Component<IAboutProps> {
               {versionText} ({this.props.applicationArchitecture})
             </span>{' '}
             ({releaseNotesLink})
+          </p>
+          <p className="no-padding fork-version">
+            <span className="selectable-text">
+              {ForkName} fork v{ForkVersion}
+            </span>
           </p>
           {this.renderUpdateDetails()}
           {this.renderUpdateButton()}

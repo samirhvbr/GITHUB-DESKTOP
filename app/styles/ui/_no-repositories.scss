@@ -23,6 +23,12 @@
     p {
       margin: 0;
     }
+
+    .fork-version {
+      margin-top: var(--spacing-half);
+      font-size: var(--font-size-sm);
+      color: var(--text-secondary-color);
+    }
   }
 
   .content {

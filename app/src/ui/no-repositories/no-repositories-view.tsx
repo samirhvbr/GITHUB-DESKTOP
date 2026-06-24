@@ -13,6 +13,7 @@ import { CloneableRepositoryFilterList } from '../clone-repository/cloneable-rep
 import { IAPIRepository } from '../../lib/api'
 import { ClickSource } from '../lib/list'
 import { AccountPicker } from '../account-picker'
+import { ForkName, ForkVersion } from '../../lib/fork-version'
 
 interface INoRepositoriesProps {
   /** A function to call when the user chooses to create a repository. */
@@ -98,6 +99,9 @@ export class NoRepositoriesView extends React.Component<
           <header>
             <h1>Let's get started!</h1>
             <p>Add a repository to GitHub Desktop to start collaborating</p>
+            <p className="fork-version">
+              {ForkName} v{ForkVersion}
+            </p>
           </header>
 
           <div className="content">
