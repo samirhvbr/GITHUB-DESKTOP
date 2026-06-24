@@ -634,6 +634,45 @@ dialog {
 
   &#add-existing-repository {
     width: 400px;
+
+    .add-existing-scanning {
+      color: var(--text-secondary-color);
+      font-size: var(--font-size-sm);
+    }
+
+    .add-existing-found-list {
+      max-height: 240px;
+      overflow-y: auto;
+      border: var(--base-border);
+      border-radius: var(--border-radius);
+      margin-top: var(--spacing-half);
+
+      .found-repo {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-half);
+        padding: var(--spacing-half);
+
+        &:nth-child(even) {
+          background: var(--box-alt-background-color);
+        }
+
+        .found-name {
+          flex-shrink: 0;
+          font-weight: var(--font-weight-semibold);
+        }
+
+        .found-path {
+          flex: 1;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: var(--text-secondary-color);
+          font-size: var(--font-size-sm);
+        }
+      }
+    }
   }
 
   &#initialize-lfs {

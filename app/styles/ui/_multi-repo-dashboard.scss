@@ -67,6 +67,35 @@
     }
   }
 
+  .multi-repo-dashboard-header .header-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing);
+  }
+
+  .add-folder-list {
+    .found-repo {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing);
+      padding: var(--spacing-half) 0;
+
+      .found-path {
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: var(--font-size-sm);
+      }
+
+      .found-tag {
+        flex-shrink: 0;
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary-color);
+      }
+    }
+  }
+
   .multi-repo-status-report {
     display: flex;
     flex-direction: column;
@@ -111,6 +140,65 @@
 
         li {
           margin-bottom: var(--spacing-quarter);
+        }
+      }
+    }
+  }
+
+  .repo-group {
+    .repo-group-header {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing-half);
+      width: 100%;
+      padding: var(--spacing-half) var(--spacing);
+      margin-top: var(--spacing-half);
+      background: var(--box-alt-background-color);
+      border-radius: var(--border-radius);
+
+      &:hover {
+        background: var(--list-item-hover-background-color);
+      }
+
+      .group-select {
+        flex-shrink: 0;
+      }
+
+      .repo-group-toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--spacing-half);
+        flex: 1;
+        min-width: 0;
+        border: none;
+        background: transparent;
+        color: var(--text-color);
+        cursor: pointer;
+        font-size: var(--font-size);
+        text-align: left;
+
+        &:focus {
+          outline: none;
+          box-shadow: 0 0 0 2px var(--focus-color);
+          border-radius: var(--border-radius);
+        }
+
+        .group-icon {
+          color: var(--text-secondary-color);
+        }
+
+        .group-label {
+          font-weight: var(--font-weight-semibold);
+        }
+
+        .group-count {
+          color: var(--text-secondary-color);
+        }
+
+        .group-demand {
+          margin-left: auto;
+          font-size: var(--font-size-sm);
+          color: var(--dialog-warning-color);
         }
       }
     }
@@ -265,8 +353,10 @@
           color: var(--dialog-error-color);
         }
 
+        // Push pendente — destaque em azul claro para saltar à vista.
         &.ahead {
-          color: var(--text-secondary-color);
+          color: var(--link-button-color);
+          font-weight: var(--font-weight-semibold);
         }
 
         &.clean {

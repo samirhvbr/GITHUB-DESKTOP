@@ -5,6 +5,7 @@ import { addSafeDirectory, getRepositoryType } from '../../lib/git'
 import { Button } from '../lib/button'
 import { TextBox } from '../lib/text-box'
 import { Row } from '../lib/row'
+import { Checkbox, CheckboxValue } from '../lib/checkbox'
 import { Dialog, DialogContent, DialogFooter } from '../dialog'
 import { LinkButton } from '../lib/link-button'
 import { PopupType } from '../../models/popup'
@@ -16,6 +17,7 @@ import { showOpenDialog } from '../main-process-proxy'
 import { Ref } from '../lib/ref'
 import { InputError } from '../lib/input-description/input-error'
 import { IAccessibleMessage } from '../../models/accessible-message'
+import { findGitRepositories } from '../../lib/find-git-repositories'
 
 interface IAddExistingRepositoryProps {
   readonly dispatcher: Dispatcher
@@ -43,6 +45,15 @@ interface IAddExistingRepositoryState {
   readonly isRepositoryUnsafe: boolean
   readonly repositoryUnsafePath?: string
   readonly isTrustingRepository: boolean
+
+  /**
+   * Fork feature: when the chosen path isn't itself a repository, we scan it for
+   * git repositories nested inside (e.g. a work folder like `~/x` holding many
+   * repos) so the user can add them all from this same dialog.
+   */
+  readonly scanning: boolean
+  readonly foundRepos: ReadonlyArray<string>
+  readonly selectedFound: ReadonlySet<string>
 }
 
 /** The component for adding an existing local repository. */
@@ -51,6 +62,9 @@ export class AddExistingRepository extends React.Component<
   IAddExistingRepositoryState
 > {
   private pathTextBoxRef = React.createRef<TextBox>()
+
+  /** Debounce handle for scanning a typed path for nested repositories. */
+  private inspectTimer: number | null = null
 
   public constructor(props: IAddExistingRepositoryProps) {
     super(props)
@@ -63,6 +77,15 @@ export class AddExistingRepository extends React.Component<
       isRepositoryBare: false,
       isRepositoryUnsafe: false,
       isTrustingRepository: false,
+      scanning: false,
+      foundRepos: [],
+      selectedFound: new Set<string>(),
+    }
+  }
+
+  public componentWillUnmount() {
+    if (this.inspectTimer !== null) {
+      window.clearTimeout(this.inspectTimer)
     }
   }
 
@@ -74,10 +97,6 @@ export class AddExistingRepository extends React.Component<
     }
     await this.validatePath(path)
     this.setState({ isTrustingRepository: false })
-  }
-
-  private async updatePath(path: string) {
-    this.setState({ path })
   }
 
   private async validatePath(path: string): Promise<boolean> {
@@ -109,6 +128,62 @@ export class AddExistingRepository extends React.Component<
     )
 
     return path.length > 0 && isRepository && !isRepositoryBare
+  }
+
+  /**
+   * Fork feature: inspect a path. If it's a single repository we keep the
+   * normal single-add behavior; otherwise we scan it for repositories nested
+   * inside and, if any are found, offer to add them all.
+   */
+  private inspectPath = async (rawPath: string) => {
+    if (rawPath.length === 0) {
+      this.setState({
+        scanning: false,
+        foundRepos: [],
+        selectedFound: new Set<string>(),
+        showNonGitRepositoryWarning: false,
+      })
+      return
+    }
+
+    const isValid = await this.validatePath(rawPath)
+    if (isValid) {
+      // It's a single repository — no folder scan needed.
+      this.setState({ foundRepos: [], selectedFound: new Set<string>() })
+      return
+    }
+
+    // Only scan when the path simply isn't a repository (not bare/unsafe).
+    const type = await getRepositoryType(rawPath)
+    if (type.kind !== 'missing') {
+      this.setState({ foundRepos: [], selectedFound: new Set<string>() })
+      return
+    }
+
+    this.setState({ scanning: true })
+    try {
+      await this.scanForRepositories(rawPath)
+    } catch (e) {
+      log.error('[AddExistingRepository] folder scan failed', e)
+      this.setState({ scanning: false })
+    }
+  }
+
+  private async scanForRepositories(
+    rawPath: string
+  ): Promise<ReadonlyArray<string>> {
+    const found = await findGitRepositories(this.resolvedPath(rawPath))
+    // Pre-select everything found by default.
+    this.setState(state =>
+      rawPath === state.path
+        ? {
+            foundRepos: found,
+            selectedFound: new Set<string>(found),
+            scanning: false,
+          }
+        : null
+    )
+    return found
   }
 
   private buildBareRepositoryError() {
@@ -178,6 +253,12 @@ export class AddExistingRepository extends React.Component<
       return null
     }
 
+    // If we're scanning or already found repos inside the folder, show that
+    // flow instead of the "not a git repository" warning.
+    if (this.state.scanning || this.state.foundRepos.length > 0) {
+      return null
+    }
+
     const displayedMessage = (
       <>
         <p>This directory does not appear to be a Git repository.</p>
@@ -219,7 +300,93 @@ export class AddExistingRepository extends React.Component<
     )
   }
 
+  /**
+   * Fork feature: render the list of git repositories found inside the chosen
+   * folder, with checkboxes so the user picks which ones to add.
+   */
+  private renderFoundRepositories() {
+    if (this.state.scanning) {
+      return (
+        <Row>
+          <div className="add-existing-scanning">
+            Procurando repositórios git nesta pasta…
+          </div>
+        </Row>
+      )
+    }
+
+    const found = this.state.foundRepos
+    if (found.length === 0) {
+      return null
+    }
+
+    const selectedCount = this.state.selectedFound.size
+    const allSelected = found.every(p => this.state.selectedFound.has(p))
+    const selectAllValue =
+      selectedCount === 0
+        ? CheckboxValue.Off
+        : allSelected
+        ? CheckboxValue.On
+        : CheckboxValue.Mixed
+
+    return (
+      <div className="add-existing-found">
+        <Row>
+          <Checkbox
+            label={`${found.length} repositório(s) encontrado(s) nesta pasta`}
+            value={selectAllValue}
+            onChange={this.onToggleAllFound}
+          />
+        </Row>
+        <div className="add-existing-found-list">
+          {found.map(p => (
+            <div className="found-repo" key={p}>
+              <Checkbox
+                value={
+                  this.state.selectedFound.has(p)
+                    ? CheckboxValue.On
+                    : CheckboxValue.Off
+                }
+                onChange={() => this.onToggleFound(p)}
+              />
+              <span className="found-name">{Path.basename(p)}</span>
+              <span className="found-path">{p}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  private onToggleFound = (path: string) => {
+    const next = new Set(this.state.selectedFound)
+    if (next.has(path)) {
+      next.delete(path)
+    } else {
+      next.add(path)
+    }
+    this.setState({ selectedFound: next })
+  }
+
+  private onToggleAllFound = () => {
+    const allSelected = this.state.foundRepos.every(p =>
+      this.state.selectedFound.has(p)
+    )
+    this.setState({
+      selectedFound: allSelected
+        ? new Set<string>()
+        : new Set<string>(this.state.foundRepos),
+    })
+  }
+
   public render() {
+    const inFolderMode = this.state.foundRepos.length > 0
+    const okButtonText = inFolderMode
+      ? `Adicionar ${this.state.selectedFound.size} repositório(s)`
+      : __DARWIN__
+      ? 'Add Repository'
+      : 'Add repository'
+
     return (
       <Dialog
         id="add-existing-repository"
@@ -241,11 +408,13 @@ export class AddExistingRepository extends React.Component<
             <Button onClick={this.showFilePicker}>Choose…</Button>
           </Row>
           {this.renderErrors()}
+          {this.renderFoundRepositories()}
         </DialogContent>
 
         <DialogFooter>
           <OkCancelButtonGroup
-            okButtonText={__DARWIN__ ? 'Add Repository' : 'Add repository'}
+            okButtonText={okButtonText}
+            okButtonDisabled={inFolderMode && this.state.selectedFound.size === 0}
           />
         </DialogFooter>
       </Dialog>
@@ -254,7 +423,18 @@ export class AddExistingRepository extends React.Component<
 
   private onPathChanged = async (path: string) => {
     if (this.state.path !== path) {
-      this.updatePath(path)
+      this.setState({
+        path,
+        foundRepos: [],
+        selectedFound: new Set<string>(),
+      })
+
+      // Debounce the (potentially expensive) repository type check + folder
+      // scan while the user is still typing.
+      if (this.inspectTimer !== null) {
+        window.clearTimeout(this.inspectTimer)
+      }
+      this.inspectTimer = window.setTimeout(() => this.inspectPath(path), 500)
     }
   }
 
@@ -267,7 +447,12 @@ export class AddExistingRepository extends React.Component<
       return
     }
 
-    this.updatePath(path)
+    this.setState({
+      path,
+      foundRepos: [],
+      selectedFound: new Set<string>(),
+    })
+    this.inspectPath(path)
   }
 
   private resolvedPath(path: string): string {
@@ -275,19 +460,48 @@ export class AddExistingRepository extends React.Component<
   }
 
   private addRepository = async () => {
-    const { path } = this.state
-    const isValidPath = await this.validatePath(path)
-
-    if (!isValidPath) {
-      this.pathTextBoxRef.current?.focus()
+    // Folder-of-repositories mode: add every selected repo found by the scan.
+    if (this.state.foundRepos.length > 0) {
+      const paths = Array.from(this.state.selectedFound)
+      if (paths.length === 0) {
+        return
+      }
+      await this.addPaths(paths)
       return
     }
 
+    const { path } = this.state
+    const isValidPath = await this.validatePath(path)
+
+    if (isValidPath) {
+      await this.addPaths([this.resolvedPath(path)])
+      return
+    }
+
+    // Not a single repository — try scanning it for repositories inside before
+    // giving up. If we find some, show the list and let the user confirm.
+    const type = await getRepositoryType(path)
+    if (type.kind === 'missing') {
+      this.setState({ scanning: true })
+      try {
+        const found = await this.scanForRepositories(path)
+        if (found.length > 0) {
+          return
+        }
+      } catch (e) {
+        log.error('[AddExistingRepository] folder scan failed', e)
+        this.setState({ scanning: false })
+      }
+    }
+
+    this.pathTextBoxRef.current?.focus()
+  }
+
+  private async addPaths(paths: ReadonlyArray<string>) {
     this.props.onDismissed()
     const { dispatcher } = this.props
 
-    const resolvedPath = this.resolvedPath(path)
-    const repositories = await dispatcher.addRepositories([resolvedPath])
+    const repositories = await dispatcher.addRepositories(paths)
 
     if (repositories.length > 0) {
       dispatcher.closeFoldout(FoldoutType.Repository)

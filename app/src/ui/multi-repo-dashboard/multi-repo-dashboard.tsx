@@ -1,9 +1,12 @@
 import * as React from 'react'
+import * as Path from 'path'
 import pLimit from 'p-limit'
 
 import { UiView } from '../ui-view'
 import { Repository, ILocalRepositoryState } from '../../models/repository'
 import { getAutoPushPreferences } from '../../models/workflow-preferences'
+import { showOpenDialog } from '../main-process-proxy'
+import { findGitRepositories } from '../../lib/find-git-repositories'
 import { CloningRepository } from '../../models/cloning-repository'
 import { IAheadBehind } from '../../models/branch'
 import { Octicon, syncClockwise } from '../octicons'
@@ -43,14 +46,6 @@ interface IRepoOp {
 
 function hasDemand(row: IDashboardRow): boolean {
   return row.changedFilesCount > 0 || (row.aheadBehind?.behind ?? 0) > 0
-}
-
-/** A repository can only be pulled/pushed in batch if it has a tracked upstream
- *  (an ahead/behind is only computed when an upstream tracking branch exists).
- *  This also keeps batch push from popping the "Publish repository" dialog for
- *  every repo that was never pushed. */
-function canSyncInBatch(row: IDashboardRow): boolean {
-  return row.aheadBehind !== null
 }
 
 interface IMultiRepoDashboardRowProps {
@@ -95,7 +90,7 @@ class MultiRepoDashboardRow extends React.Component<IMultiRepoDashboardRowProps>
         <TooltippedContent
           tagName="span"
           className="op-status done"
-          tooltip={`${verb} concluído`}
+          tooltip={op.message ? `${verb}: ${op.message}` : `${verb} concluído`}
         >
           <Octicon symbol={octicons.check} />
         </TooltippedContent>
@@ -250,6 +245,27 @@ interface IMultiRepoDashboardState {
 
   /** Está atualizando os indicadores (status) de todos os repos? */
   readonly isRefreshing: boolean
+
+  /** Mostra a sub-tela "Adicionar pasta" (escanear + selecionar) no lugar da lista. */
+  readonly addFolderOpen: boolean
+
+  /** Pasta raiz escolhida para o scan. */
+  readonly addFolderRoot: string | null
+
+  /** Está escaneando a pasta em busca de repos? */
+  readonly addFolderScanning: boolean
+
+  /** Caminhos de repos git encontrados no scan. */
+  readonly addFolderFound: ReadonlyArray<string>
+
+  /** Caminhos marcados para adicionar. */
+  readonly addFolderSelected: ReadonlySet<string>
+
+  /** Está adicionando os repos selecionados? */
+  readonly addFolderAdding: boolean
+
+  /** Chaves (pasta-mãe) dos grupos recolhidos. */
+  readonly collapsedGroups: ReadonlySet<string>
 }
 
 /**
@@ -271,6 +287,13 @@ export class MultiRepoDashboard extends React.Component<
       showReport: false,
       reportCopied: false,
       isRefreshing: false,
+      addFolderOpen: false,
+      addFolderRoot: null,
+      addFolderScanning: false,
+      addFolderFound: [],
+      addFolderSelected: new Set<string>(),
+      addFolderAdding: false,
+      collapsedGroups: new Set<string>(),
     }
   }
 
@@ -341,6 +364,145 @@ export class MultiRepoDashboard extends React.Component<
     })
   }
 
+  /**
+   * Group the rows by their parent folder so repos that live together under a
+   * project folder (e.g. `~/x/BLUE3/*`, `~/x/DRIVE/*`) show together. The label
+   * is the parent folder's name. Groups with pending work come first.
+   */
+  private getGroups(
+    rows: ReadonlyArray<IDashboardRow>
+  ): ReadonlyArray<{
+    readonly key: string
+    readonly label: string
+    readonly rows: ReadonlyArray<IDashboardRow>
+  }> {
+    const map = new Map<string, IDashboardRow[]>()
+    for (const row of rows) {
+      const parent = Path.dirname(row.repository.path)
+      const existing = map.get(parent)
+      if (existing !== undefined) {
+        existing.push(row)
+      } else {
+        map.set(parent, [row])
+      }
+    }
+
+    const groups = Array.from(map, ([key, groupRows]) => ({
+      key,
+      label: Path.basename(key) || key,
+      rows: groupRows as ReadonlyArray<IDashboardRow>,
+    }))
+
+    return groups.sort((a, b) => {
+      const da = a.rows.some(hasDemand) ? 0 : 1
+      const db = b.rows.some(hasDemand) ? 0 : 1
+      return da !== db ? da - db : a.label.localeCompare(b.label)
+    })
+  }
+
+  private onToggleGroup = (key: string) => {
+    const next = new Set(this.state.collapsedGroups)
+    if (next.has(key)) {
+      next.delete(key)
+    } else {
+      next.add(key)
+    }
+    this.setState({ collapsedGroups: next })
+  }
+
+  private onToggleAllGroups = () => {
+    const groups = this.getGroups(this.getRows())
+    const allCollapsed =
+      groups.length > 0 &&
+      groups.every(g => this.state.collapsedGroups.has(g.key))
+    this.setState({
+      collapsedGroups: allCollapsed
+        ? new Set<string>()
+        : new Set<string>(groups.map(g => g.key)),
+    })
+  }
+
+  private renderRow = (row: IDashboardRow) => (
+    <MultiRepoDashboardRow
+      key={row.repository.id}
+      row={row}
+      selected={this.state.selectedRepoIds.has(row.repository.id)}
+      op={this.state.ops.get(row.repository.id)}
+      disabled={this.state.isRunning}
+      onToggleSelected={this.onToggleSelected}
+      onOpen={this.props.onSelectRepository}
+      autoPushEnabled={
+        getAutoPushPreferences(row.repository.workflowPreferences).enabled
+      }
+      onToggleAutoPush={this.onToggleAutoPush}
+    />
+  )
+
+  private renderGroup = (group: {
+    readonly key: string
+    readonly label: string
+    readonly rows: ReadonlyArray<IDashboardRow>
+  }) => {
+    const collapsed = this.state.collapsedGroups.has(group.key)
+    const demand = group.rows.filter(hasDemand).length
+    const selectedInGroup = group.rows.filter(r =>
+      this.state.selectedRepoIds.has(r.repository.id)
+    ).length
+    const groupValue =
+      selectedInGroup === 0
+        ? CheckboxValue.Off
+        : selectedInGroup === group.rows.length
+        ? CheckboxValue.On
+        : CheckboxValue.Mixed
+
+    return (
+      <div className="repo-group" key={group.key}>
+        <div className="repo-group-header">
+          <Checkbox
+            className="group-select"
+            value={groupValue}
+            onChange={() => this.onToggleGroupSelection(group)}
+            disabled={this.state.isRunning}
+          />
+          <button
+            type="button"
+            className="repo-group-toggle"
+            onClick={() => this.onToggleGroup(group.key)}
+            aria-expanded={!collapsed}
+          >
+            <Octicon
+              symbol={collapsed ? octicons.chevronRight : octicons.chevronDown}
+            />
+            <Octicon className="group-icon" symbol={octicons.fileDirectory} />
+            <span className="group-label">{group.label}</span>
+            <span className="group-count">({group.rows.length})</span>
+            {demand > 0 && (
+              <span className="group-demand">{demand} com demanda</span>
+            )}
+          </button>
+        </div>
+        {!collapsed && group.rows.map(this.renderRow)}
+      </div>
+    )
+  }
+
+  private onToggleGroupSelection = (group: {
+    readonly rows: ReadonlyArray<IDashboardRow>
+  }) => {
+    if (this.state.isRunning) {
+      return
+    }
+    const ids = group.rows.map(r => r.repository.id)
+    const allSelected = ids.every(id => this.state.selectedRepoIds.has(id))
+    const next = new Set(this.state.selectedRepoIds)
+    if (allSelected) {
+      ids.forEach(id => next.delete(id))
+    } else {
+      ids.forEach(id => next.add(id))
+    }
+    this.setState({ selectedRepoIds: next })
+  }
+
   private onToggleSelected = (repository: Repository) => {
     if (this.state.isRunning) {
       return
@@ -401,18 +563,9 @@ export class MultiRepoDashboard extends React.Component<
     const selected = this.getRows().filter(r =>
       selectedRepoIds.has(r.repository.id)
     )
-    const actionable = selected.filter(canSyncInBatch)
-    const skipped = selected.length - actionable.length
 
-    if (actionable.length === 0) {
-      this.setState({
-        notice:
-          skipped > 0
-            ? `Nenhum dos selecionados tem upstream para ${
-                kind === 'pull' ? 'pull' : 'push'
-              } (${skipped} ignorado(s)).`
-            : 'Selecione ao menos um repositório.',
-      })
+    if (selected.length === 0) {
+      this.setState({ notice: 'Selecione ao menos um repositório.' })
       return
     }
 
@@ -420,30 +573,78 @@ export class MultiRepoDashboard extends React.Component<
 
     let done = 0
     let errors = 0
+    let skipped = 0
+    let noop = 0
 
     // Sync a few repositories at a time instead of one-by-one.
     const limit = pLimit(MaxConcurrentSyncs)
 
     await Promise.all(
-      actionable.map(row =>
+      selected.map(row =>
         limit(async () => {
           const repo = row.repository
           this.setOp(repo.id, { kind, status: 'running' })
 
           try {
-            if (kind === 'pull') {
-              await this.props.dispatcher.pull(repo)
-            } else {
-              await this.props.dispatcher.push(repo)
+            // Refresh the repo's FULL state first. Without this the push/pull
+            // run against an empty cache (tip = Unknown, no remote) and the git
+            // operation silently no-ops — that was the "push fez nada" bug.
+            await this.props.dispatcher.refreshRepository(repo)
+
+            const before = this.props.localRepositoryStateLookup.get(repo.id)
+            const ab = before?.aheadBehind ?? null
+
+            // No tracked upstream → nothing to pull/push in batch.
+            if (ab === null) {
+              this.setOp(repo.id, {
+                kind,
+                status: 'done',
+                message: 'sem upstream',
+              })
+              skipped++
+              return
             }
-            // Refresh this repo's indicator so the dashboard reflects the new
-            // ahead/behind right away instead of waiting for the periodic updater.
-            await this.props.dispatcher.refreshRepositoryIndicator(repo)
-            this.setOp(repo.id, { kind, status: 'done' })
-            done++
+
+            if (kind === 'push') {
+              if (ab.ahead === 0) {
+                this.setOp(repo.id, {
+                  kind,
+                  status: 'done',
+                  message: 'nada a enviar',
+                })
+                noop++
+                return
+              }
+              await this.props.dispatcher.push(repo)
+              await this.props.dispatcher.refreshRepositoryIndicator(repo)
+              this.setOp(repo.id, {
+                kind,
+                status: 'done',
+                message: `${ab.ahead} commit(s) enviado(s)`,
+              })
+              done++
+            } else {
+              if (ab.behind === 0) {
+                this.setOp(repo.id, {
+                  kind,
+                  status: 'done',
+                  message: 'já atualizado',
+                })
+                noop++
+                return
+              }
+              await this.props.dispatcher.pull(repo)
+              await this.props.dispatcher.refreshRepositoryIndicator(repo)
+              this.setOp(repo.id, {
+                kind,
+                status: 'done',
+                message: `${ab.behind} commit(s) recebido(s)`,
+              })
+              done++
+            }
           } catch (e) {
             // Also surface the failure in the app log (e.g.
-            // %APPDATA%/GitHub Desktop[-dev]/logs) so batch errors are
+            // ~/.config/GitHub Desktop[-dev]/logs) so batch errors are
             // traceable beyond the per-row indicator/tooltip.
             log.error(
               `[MultiRepoDashboard] ${kind} failed for '${repo.name}'`,
@@ -461,7 +662,10 @@ export class MultiRepoDashboard extends React.Component<
     )
 
     const verb = kind === 'pull' ? 'Pull' : 'Push'
-    const parts = [`${done} ok`]
+    const parts = [`${done} feito(s)`]
+    if (noop > 0) {
+      parts.push(`${noop} sem mudança`)
+    }
     if (errors > 0) {
       parts.push(`${errors} com erro`)
     }
@@ -480,6 +684,181 @@ export class MultiRepoDashboard extends React.Component<
 
   private onShowReport = () => this.setState({ showReport: true })
   private onCloseReport = () => this.setState({ showReport: false })
+
+  private onAddFolder = async () => {
+    const root = await showOpenDialog({ properties: ['openDirectory'] })
+
+    if (root === null) {
+      return
+    }
+
+    this.setState({
+      addFolderOpen: true,
+      addFolderRoot: root,
+      addFolderScanning: true,
+      addFolderFound: [],
+      addFolderSelected: new Set<string>(),
+    })
+
+    try {
+      const found = await findGitRepositories(root)
+      const tracked = new Set(this.props.repositories.map(r => r.path))
+      // Pre-select everything that isn't already tracked by the app.
+      const selected = new Set(found.filter(p => !tracked.has(p)))
+      this.setState({
+        addFolderFound: found,
+        addFolderSelected: selected,
+        addFolderScanning: false,
+      })
+    } catch (e) {
+      log.error('[MultiRepoDashboard] folder scan failed', e)
+      this.setState({
+        addFolderScanning: false,
+        notice: 'Falha ao escanear a pasta.',
+      })
+    }
+  }
+
+  private onCancelAddFolder = () =>
+    this.setState({
+      addFolderOpen: false,
+      addFolderFound: [],
+      addFolderSelected: new Set<string>(),
+    })
+
+  private getSelectableFoundPaths(): ReadonlyArray<string> {
+    const tracked = new Set(this.props.repositories.map(r => r.path))
+    return this.state.addFolderFound.filter(p => !tracked.has(p))
+  }
+
+  private onToggleFoundPath = (path: string) => {
+    const next = new Set(this.state.addFolderSelected)
+    if (next.has(path)) {
+      next.delete(path)
+    } else {
+      next.add(path)
+    }
+    this.setState({ addFolderSelected: next })
+  }
+
+  private onToggleSelectAllFound = () => {
+    const selectable = this.getSelectableFoundPaths()
+    const allSelected =
+      selectable.length > 0 &&
+      selectable.every(p => this.state.addFolderSelected.has(p))
+    this.setState({
+      addFolderSelected: allSelected
+        ? new Set<string>()
+        : new Set<string>(selectable),
+    })
+  }
+
+  private onConfirmAddFolder = async () => {
+    const paths = Array.from(this.state.addFolderSelected)
+    if (paths.length === 0) {
+      return
+    }
+
+    this.setState({ addFolderAdding: true })
+    try {
+      await this.props.dispatcher.addRepositories(paths)
+      this.setState({
+        addFolderOpen: false,
+        addFolderAdding: false,
+        addFolderFound: [],
+        addFolderSelected: new Set<string>(),
+        notice: `${paths.length} repositório(s) adicionado(s).`,
+      })
+      // Compute indicators for the freshly added repositories.
+      this.refreshAllIndicators()
+    } catch (e) {
+      log.error('[MultiRepoDashboard] failed to add repositories', e)
+      this.setState({
+        addFolderAdding: false,
+        notice: 'Falha ao adicionar repositórios.',
+      })
+    }
+  }
+
+  private renderAddFolder() {
+    const tracked = new Set(this.props.repositories.map(r => r.path))
+    const found = this.state.addFolderFound
+    const selectable = this.getSelectableFoundPaths()
+    const selectedCount = this.state.addFolderSelected.size
+    const allSelected =
+      selectable.length > 0 &&
+      selectable.every(p => this.state.addFolderSelected.has(p))
+    const selectAllValue =
+      selectedCount === 0
+        ? CheckboxValue.Off
+        : allSelected
+        ? CheckboxValue.On
+        : CheckboxValue.Mixed
+
+    return (
+      <div className="multi-repo-status-report">
+        <div className="report-toolbar">
+          <Button
+            onClick={this.onCancelAddFolder}
+            disabled={this.state.addFolderAdding}
+          >
+            <Octicon symbol={octicons.arrowLeft} />
+            Voltar
+          </Button>
+          {!this.state.addFolderScanning && selectable.length > 0 && (
+            <Checkbox
+              className="select-all"
+              label="Selecionar todos"
+              value={selectAllValue}
+              onChange={this.onToggleSelectAllFound}
+            />
+          )}
+          <Button
+            onClick={this.onConfirmAddFolder}
+            disabled={this.state.addFolderAdding || selectedCount === 0}
+          >
+            <Octicon symbol={octicons.check} />
+            Adicionar ({selectedCount})
+          </Button>
+        </div>
+
+        <div className="report-body">
+          <p className="report-summary">{this.state.addFolderRoot}</p>
+
+          {this.state.addFolderScanning ? (
+            <p className="report-summary">
+              <Octicon className="spin" symbol={syncClockwise} /> Escaneando…
+            </p>
+          ) : found.length === 0 ? (
+            <div className="empty-message">
+              Nenhum repositório git encontrado nessa pasta.
+            </div>
+          ) : (
+            <div className="add-folder-list">
+              {found.map(p => {
+                const isTracked = tracked.has(p)
+                const checked =
+                  isTracked || this.state.addFolderSelected.has(p)
+                return (
+                  <div className="found-repo" key={p}>
+                    <Checkbox
+                      value={checked ? CheckboxValue.On : CheckboxValue.Off}
+                      onChange={() => this.onToggleFoundPath(p)}
+                      disabled={isTracked || this.state.addFolderAdding}
+                    />
+                    <span className="found-path">{p}</span>
+                    {isTracked && (
+                      <span className="found-tag">já adicionado</span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   /** Repos grouped by what they need, for the status report. */
   private getStatusSections(
@@ -534,7 +913,7 @@ export class MultiRepoDashboard extends React.Component<
       const name = nameById.get(id) ?? String(id)
       const status =
         op.status === 'done'
-          ? 'ok'
+          ? op.message ?? 'ok'
           : op.status === 'running'
           ? 'em andamento'
           : `erro${op.message ? ` — ${op.message}` : ''}`
@@ -639,6 +1018,11 @@ export class MultiRepoDashboard extends React.Component<
     const behind = rows.filter(r => (r.aheadBehind?.behind ?? 0) > 0).length
     const ahead = rows.filter(r => (r.aheadBehind?.ahead ?? 0) > 0).length
 
+    const groups = this.getGroups(rows)
+    const allGroupsCollapsed =
+      groups.length > 0 &&
+      groups.every(g => this.state.collapsedGroups.has(g.key))
+
     const { selectedRepoIds, isRunning } = this.state
     const selectedCount = selectedRepoIds.size
     const allSelected =
@@ -670,10 +1054,17 @@ export class MultiRepoDashboard extends React.Component<
               )}
             </div>
           </div>
-          <Button onClick={this.props.onClose}>Fechar</Button>
+          <div className="header-actions">
+            {!this.state.addFolderOpen && !this.state.showReport && (
+              <Button onClick={this.onAddFolder}>Adicionar pasta…</Button>
+            )}
+            <Button onClick={this.props.onClose}>Fechar</Button>
+          </div>
         </header>
 
-        {this.state.showReport ? (
+        {this.state.addFolderOpen ? (
+          this.renderAddFolder()
+        ) : this.state.showReport ? (
           this.renderReport(rows)
         ) : (
           <>
@@ -687,6 +1078,12 @@ export class MultiRepoDashboard extends React.Component<
                   disabled={isRunning}
                 />
                 <div className="batch-actions">
+                  <Button onClick={this.onToggleAllGroups} disabled={isRunning}>
+                    <Octicon
+                      symbol={allGroupsCollapsed ? octicons.unfold : octicons.fold}
+                    />
+                    {allGroupsCollapsed ? 'Expandir todos' : 'Colapsar todos'}
+                  </Button>
                   <Button
                     onClick={this.onRefresh}
                     disabled={isRunning || this.state.isRefreshing}
@@ -728,22 +1125,7 @@ export class MultiRepoDashboard extends React.Component<
                   Nenhum repositório adicionado.
                 </div>
               ) : (
-                rows.map(row => (
-                  <MultiRepoDashboardRow
-                    key={row.repository.id}
-                    row={row}
-                    selected={selectedRepoIds.has(row.repository.id)}
-                    op={this.state.ops.get(row.repository.id)}
-                    disabled={isRunning}
-                    onToggleSelected={this.onToggleSelected}
-                    onOpen={this.props.onSelectRepository}
-                    autoPushEnabled={
-                      getAutoPushPreferences(row.repository.workflowPreferences)
-                        .enabled
-                    }
-                    onToggleAutoPush={this.onToggleAutoPush}
-                  />
-                ))
+                groups.map(this.renderGroup)
               )}
             </div>
           </>
