@@ -18,4 +18,11 @@ DEMANDAS FUTURAS
 - push agendado, se algo conflitar, cria um branch com descricao breve ou data hora e faz o push nesta branch, para o usuario não ficar travado, mas vamos fazer isto só mediante flag 
   [] forçar o push em uma brnach caso haja conflito
   [] informar por email ou outra forma o usuario que teve problema no push
-  
+
+
+- status não esta bom
+   o retorno é sempre ok
+   eu fiz uma alteração em um arquivo e o status foi ok no status
+   fiz o push e tambem foi ok o resultado
+
+- fiz um push manual e encontrei arquivos commitados que o push do app não subiu, tenho que testar de novo, não posso garantir esta falha
