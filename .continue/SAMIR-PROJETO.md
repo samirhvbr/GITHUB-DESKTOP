@@ -13,3 +13,9 @@ GITHUB DESKTOP
 DEMANDAS FUTURAS
 
 - login centralizador, como no projeto sshvterm, onde o usuario vai poder controlar um github desktop remoto, caso tenha esquecido um push, poder orientar o push remotamente a partir de outro github desktop devidamente logado no github desktop e na mesma conta de usuario do push.
+
+
+- push agendado, se algo conflitar, cria um branch com descricao breve ou data hora e faz o push nesta branch, para o usuario não ficar travado, mas vamos fazer isto só mediante flag 
+  [] forçar o push em uma brnach caso haja conflito
+  [] informar por email ou outra forma o usuario que teve problema no push
+  
