@@ -17,6 +17,7 @@ export enum BannerType {
   SuccessfulReorder = 'SuccessfulReorder',
   ConflictsFound = 'ConflictsFound',
   OSVersionNoLongerSupported = 'OSVersionNoLongerSupported',
+  BatchCloneSkippedExisting = 'BatchCloneSkippedExisting',
 }
 
 export type Banner =
@@ -122,3 +123,10 @@ export type Banner =
       readonly onOpenConflictsDialog: () => void
     }
   | { readonly type: BannerType.OSVersionNoLongerSupported }
+  | {
+      readonly type: BannerType.BatchCloneSkippedExisting
+      /** Number of repositories that were actually queued for cloning. */
+      readonly clonedCount: number
+      /** Names of the repositories skipped because they already existed. */
+      readonly skipped: ReadonlyArray<string>
+    }

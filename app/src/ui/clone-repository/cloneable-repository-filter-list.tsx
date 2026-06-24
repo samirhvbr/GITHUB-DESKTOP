@@ -9,13 +9,13 @@ import {
 } from './group-repositories'
 import memoizeOne from 'memoize-one'
 import { Button } from '../lib/button'
-import { IMatches } from '../../lib/fuzzy-find'
+import { IMatches, match } from '../../lib/fuzzy-find'
 import { Octicon, syncClockwise } from '../octicons'
 import { HighlightText } from '../lib/highlight-text'
 import { ClickSource } from '../lib/list'
 import { LinkButton } from '../lib/link-button'
 import { Ref } from '../lib/ref'
-import { SectionFilterList } from '../lib/section-filter-list'
+import { SectionFilterList, getText } from '../lib/section-filter-list'
 import { TooltippedContent } from '../lib/tooltipped-content'
 import { Checkbox, CheckboxValue } from '../lib/checkbox'
 
@@ -88,6 +88,17 @@ interface ICloneableRepositoryFilterListProps {
   /** Called to toggle a repository in/out of the multi-select set. */
   readonly onToggleRepositorySelection?: (repository: IAPIRepository) => void
 
+  /**
+   * In multi-select (batch clone) mode, called to select or deselect a batch of
+   * repositories at once, identified by their clone URL. Used by the "Select
+   * all" checkbox, which operates on the repositories currently visible given
+   * the active filter.
+   */
+  readonly onSetRepositoriesSelected?: (
+    urls: ReadonlyArray<string>,
+    selected: boolean
+  ) => void
+
   readonly renderPreFilter?: () => JSX.Element | null
 }
 
@@ -139,7 +150,7 @@ interface ICloneableRepositoryListItemProps {
  * checkbox is a visual indicator only — clicking anywhere on the row toggles
  * the selection (handled by the list's onItemClick).
  */
-class CloneableRepositoryListItem extends React.Component<ICloneableRepositoryListItemProps> {
+class CloneableRepositoryListItem extends React.PureComponent<ICloneableRepositoryListItemProps> {
   public render() {
     const { item, matches, multiSelect, selected } = this.props
 
@@ -189,6 +200,39 @@ export class CloneableRepositoryFilterList extends React.PureComponent<ICloneabl
    */
   private getSelectedListItem = memoizeOne(findMatchingListItem)
 
+  /**
+   * A memoized function returning the clone URLs of the repositories currently
+   * visible given the active filter, in the same order the list shows them.
+   * Drives the "Select all" checkbox so it acts on exactly the rows the user
+   * can see (matching the list's own fuzzy filtering).
+   */
+  private getVisibleRepositoryUrls = memoizeOne(
+    (
+      groups: ReadonlyArray<IFilterListGroup<ICloneableRepositoryListItem>>,
+      filterText: string
+    ): ReadonlyArray<string> => {
+      const filter = filterText.toLowerCase()
+      const urls = new Array<string>()
+      for (const group of groups) {
+        const items = filter
+          ? match(filter, group.items, getText).map(m => m.item)
+          : group.items
+        for (const item of items) {
+          urls.push(item.url)
+        }
+      }
+      return urls
+    }
+  )
+
+  private getVisibleUrls(): ReadonlyArray<string> {
+    const groups = this.getRepositoryGroups(
+      this.props.repositories,
+      this.props.account.login
+    )
+    return this.getVisibleRepositoryUrls(groups, this.props.filterText)
+  }
+
   public componentDidMount() {
     if (this.props.repositories === null) {
       this.refreshRepositories()
@@ -237,7 +281,11 @@ export class CloneableRepositoryFilterList extends React.PureComponent<ICloneabl
         onFilterTextChanged={this.props.onFilterTextChanged}
         renderNoItems={this.renderNoItems}
         renderPostFilter={this.renderPostFilter}
-        renderPreFilter={this.props.renderPreFilter}
+        renderPreFilter={
+          this.props.onSetRepositoriesSelected !== undefined
+            ? this.renderSelectAll
+            : this.props.renderPreFilter
+        }
         onItemClick={
           this.props.onToggleRepositorySelection !== undefined
             ? this.onItemClickToggle
@@ -324,6 +372,52 @@ export class CloneableRepositoryFilterList extends React.PureComponent<ICloneabl
         selected={this.props.selectedRepositoryUrls?.has(item.url) ?? false}
       />
     )
+  }
+
+  private renderSelectAll = () => {
+    if (this.props.onSetRepositoriesSelected === undefined) {
+      return null
+    }
+
+    const visibleUrls = this.getVisibleUrls()
+    if (visibleUrls.length === 0) {
+      return null
+    }
+
+    const selected = this.props.selectedRepositoryUrls
+    const selectedCount = selected
+      ? visibleUrls.filter(url => selected.has(url)).length
+      : 0
+
+    const value =
+      selectedCount === 0
+        ? CheckboxValue.Off
+        : selectedCount === visibleUrls.length
+        ? CheckboxValue.On
+        : CheckboxValue.Mixed
+
+    return (
+      <Checkbox
+        className="clone-select-all-checkbox"
+        label="Select all"
+        value={value}
+        onChange={this.onSelectAllChanged}
+      />
+    )
+  }
+
+  private onSelectAllChanged = () => {
+    const { onSetRepositoriesSelected, selectedRepositoryUrls } = this.props
+    if (onSetRepositoriesSelected === undefined) {
+      return
+    }
+
+    const visibleUrls = this.getVisibleUrls()
+    const allSelected =
+      visibleUrls.length > 0 &&
+      visibleUrls.every(url => selectedRepositoryUrls?.has(url))
+
+    onSetRepositoriesSelected(visibleUrls, !allSelected)
   }
 
   private renderPostFilter = () => {

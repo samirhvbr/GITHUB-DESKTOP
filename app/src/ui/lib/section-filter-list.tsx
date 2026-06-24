@@ -23,6 +23,14 @@ import {
 } from './filter-list'
 import * as octicons from '../octicons/octicons.generated'
 
+/**
+ * A shared, immutable "no matches" value reused for every row when there's no
+ * active filter. Reusing a single reference (instead of allocating a fresh
+ * object per row on every render) lets row components that are PureComponents
+ * skip re-rendering when nothing about the row actually changed.
+ */
+const emptyMatches: IMatches = { title: [], subtitle: [] }
+
 interface IFlattenedGroup<T> {
   readonly kind: 'group'
   readonly identifier: T
@@ -728,7 +736,7 @@ function createStateUpdate<T extends IFilterListItem, GroupIdentifier>(
       ? match(filter, group.items, getText)
       : group.items.map(item => ({
           score: 1,
-          matches: { title: [], subtitle: [] },
+          matches: emptyMatches,
           item,
         }))
 

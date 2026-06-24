@@ -171,6 +171,29 @@ export function renderBanner(
       )
     case BannerType.OSVersionNoLongerSupported:
       return <OSVersionNoLongerSupportedBanner onDismissed={onDismissed} />
+    case BannerType.BatchCloneSkippedExisting: {
+      const skippedCount = banner.skipped.length
+      const clonedPart =
+        banner.clonedCount > 0
+          ? `Cloning ${banner.clonedCount} ${
+              banner.clonedCount === 1 ? 'repository' : 'repositories'
+            }. `
+          : ''
+      const skippedNoun = skippedCount === 1 ? 'repository' : 'repositories'
+      const existsVerb = skippedCount === 1 ? 'exists' : 'exist'
+      return (
+        <SuccessBanner
+          key="batch-clone-skipped-existing"
+          timeout={15000}
+          onDismissed={onDismissed}
+        >
+          <span>
+            {clonedPart}Skipped {skippedCount} {skippedNoun} that already{' '}
+            {existsVerb} locally: {banner.skipped.join(', ')}.
+          </span>
+        </SuccessBanner>
+      )
+    }
     default:
       return assertNever(banner, `Unknown popup type: ${banner}`)
   }

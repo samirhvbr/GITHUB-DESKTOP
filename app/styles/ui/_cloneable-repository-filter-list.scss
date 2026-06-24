@@ -1,4 +1,14 @@
 .filter-list.clone-github-repo {
+  .filter-field-row {
+    align-items: center;
+  }
+
+  .clone-select-all-checkbox {
+    flex-shrink: 0;
+    margin-right: var(--spacing);
+    white-space: nowrap;
+  }
+
   .no-items {
     display: flex;
     align-items: center;

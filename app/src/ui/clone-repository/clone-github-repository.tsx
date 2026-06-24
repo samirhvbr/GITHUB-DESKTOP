@@ -88,6 +88,15 @@ interface ICloneGithubRepositoryProps {
   /** Multi-select (batch clone): toggle a repository in/out of the selection. */
   readonly onToggleRepositorySelection: (repository: IAPIRepository) => void
 
+  /**
+   * Multi-select (batch clone): select or deselect a batch of repositories at
+   * once by clone URL. Used by the "Select all" checkbox.
+   */
+  readonly onSetRepositoriesSelected: (
+    urls: ReadonlyArray<string>,
+    selected: boolean
+  ) => void
+
   readonly onSelectedAccountChanged: (account: Account) => void
 }
 
@@ -122,6 +131,7 @@ export class CloneGithubRepository extends React.PureComponent<ICloneGithubRepos
             onItemClicked={this.props.onItemClicked}
             selectedRepositoryUrls={this.props.selectedRepositoryUrls}
             onToggleRepositorySelection={this.props.onToggleRepositorySelection}
+            onSetRepositoriesSelected={this.props.onSetRepositoriesSelected}
           />
         </Row>
 

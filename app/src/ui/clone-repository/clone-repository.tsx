@@ -8,6 +8,7 @@ import {
   isEnterpriseAccount,
 } from '../../models/account'
 import { FoldoutType } from '../../lib/app-state'
+import { BannerType } from '../../models/banner'
 import {
   IRepositoryIdentifier,
   parseRepositoryIdentifier,
@@ -416,6 +417,7 @@ export class CloneRepository extends React.Component<
               onItemClicked={this.onItemClicked}
               selectedRepositoryUrls={tabState.selectedUrls}
               onToggleRepositorySelection={this.onToggleRepository}
+              onSetRepositoriesSelected={this.onSetRepositoriesSelected}
               onSelectedAccountChanged={this.onSelectedAccountChanged}
             />
           )
@@ -611,6 +613,37 @@ export class CloneRepository extends React.Component<
     } else {
       next.add(repository.clone_url)
     }
+
+    // Track the clicked repository as the list's active row as well. Without
+    // this, props.selectedItem stays null in batch mode and the filter list
+    // resets its internal selected row on every toggle, which makes it
+    // re-anchor and jump the scroll position back to the top on each click.
+    this.setGitHubTabState({ selectedUrls: next, selectedItem: repository }, tab)
+  }
+
+  /**
+   * Select or deselect a batch of repositories at once (the "Select all"
+   * checkbox). The provided URLs are the repositories currently visible given
+   * the active filter.
+   */
+  private onSetRepositoriesSelected = (
+    urls: ReadonlyArray<string>,
+    selected: boolean
+  ) => {
+    const tab = this.props.selectedTab
+    if (tab === CloneRepositoryTab.Generic) {
+      return
+    }
+
+    const { selectedUrls } = this.getGitHubTabState(tab)
+    const next = new Set(selectedUrls)
+    for (const url of urls) {
+      if (selected) {
+        next.add(url)
+      } else {
+        next.delete(url)
+      }
+    }
     this.setGitHubTabState({ selectedUrls: next }, tab)
   }
 
@@ -619,19 +652,15 @@ export class CloneRepository extends React.Component<
    * into a subfolder named after the repository and checked out on its default
    * branch. The dialog is dismissed once, after queueing all clones.
    */
-  private cloneSelectedRepositories = (
+  private cloneSelectedRepositories = async (
     tab: CloneRepositoryTab.DotCom | CloneRepositoryTab.Enterprise
   ) => {
     const tabState = this.getGitHubTabState(tab)
     const account = this.getAccountForTab(tab)
 
-    // The single-select flow appends the repo name to `path` (root/repoName).
-    // For the batch clone we want just the root folder, so strip that trailing
-    // segment whenever a single repository also happens to be selected.
-    const rootPath =
-      tabState.selectedItem !== null && tabState.path !== null
-        ? Path.dirname(tabState.path)
-        : tabState.path
+    // In batch mode the path field is the common root folder; each repository
+    // is cloned into a subfolder named after it.
+    const rootPath = tabState.path
 
     if (account === null || rootPath == null || rootPath.length === 0) {
       return
@@ -643,9 +672,25 @@ export class CloneRepository extends React.Component<
       tabState.selectedUrls.has(r.clone_url)
     )
 
+    // Skip repositories whose destination folder already exists (and isn't
+    // empty) instead of letting each one fail with a "destination already
+    // exists / Retry clone" error popup. The skipped ones are reported via a
+    // banner once the remaining clones are queued.
+    const toClone = new Array<IAPIRepository>()
+    const skipped = new Array<string>()
+    for (const repo of selected) {
+      const destination = Path.join(rootPath, repo.name)
+      const folderError = await this.validateEmptyFolder(destination)
+      if (folderError === null) {
+        toClone.push(repo)
+      } else {
+        skipped.push(repo.name)
+      }
+    }
+
     this.props.dispatcher.closeFoldout(FoldoutType.Repository)
 
-    for (const repo of selected) {
+    for (const repo of toClone) {
       const destination = Path.join(rootPath, repo.name)
       this.props.dispatcher.clone(repo.clone_url, destination, {
         defaultBranch: repo.default_branch,
@@ -653,6 +698,15 @@ export class CloneRepository extends React.Component<
     }
 
     setDefaultDir(rootPath)
+
+    if (skipped.length > 0) {
+      this.props.dispatcher.setBanner({
+        type: BannerType.BatchCloneSkippedExisting,
+        clonedCount: toClone.length,
+        skipped,
+      })
+    }
+
     this.props.onDismissed()
   }
 
