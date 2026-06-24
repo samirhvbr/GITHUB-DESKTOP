@@ -197,6 +197,49 @@
       }
     }
 
+    // Quick per-repo toggle for scheduled push (Fase 3). Highlighted when on.
+    .auto-push-toggle {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+
+      .auto-push-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--spacing-quarter);
+        border: none;
+        background: transparent;
+        color: var(--text-secondary-color);
+        cursor: pointer;
+        border-radius: var(--border-radius);
+
+        .octicon {
+          width: 14px;
+          height: 14px;
+        }
+
+        &:hover {
+          background: var(--list-item-hover-background-color);
+          color: var(--text-color);
+        }
+
+        &:focus {
+          outline: none;
+          box-shadow: 0 0 0 2px var(--focus-color);
+        }
+
+        &[disabled] {
+          opacity: 0.5;
+          cursor: default;
+        }
+      }
+
+      &.on .auto-push-button {
+        color: var(--ahead-behind-fill-color);
+      }
+    }
+
     .repo-indicators {
       display: flex;
       align-items: center;

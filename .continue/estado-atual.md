@@ -78,7 +78,10 @@ No Linux atual não há Node 24 nem nvm; o app roda de fato no **Windows** — g
 - [x] **Select all** no clone em lote — feito.
 - [x] Versionamento do fork (VERSION.md + UI) — feito (v0.3.0).
 - [ ] **Fase 2c:** ajuste individual de pasta por repo + aba "usuário público" (`streamPublicRepositories`).
-- [ ] **Fase 3:** push agendado + auto-commit opt-in — ver [plano-tecnico.md](plano-tecnico.md).
+- [~] **Fase 3:** push agendado + auto-commit opt-in — **implementado** (2026-06-24),
+      a validar ao vivo. UI nos 2 lugares (Repository Settings + toggle no dashboard);
+      off por padrão; guardas no push (nunca force). Ver
+      [fase3-scheduled-push.md](fase3-scheduled-push.md).
 - [~] **Multiplataforma** (SAMIR-PROJETO): código é portável; **Windows validado**.
       Launcher `run-local.sh` (Mac/Linux) + guia [run-mac-linux.md](run-mac-linux.md)
       criados. **Falta buildar/rodar no Mac e no Linux.** Empacotamento de produção:

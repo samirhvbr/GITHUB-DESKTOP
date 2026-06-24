@@ -3,6 +3,7 @@ import pLimit from 'p-limit'
 
 import { UiView } from '../ui-view'
 import { Repository, ILocalRepositoryState } from '../../models/repository'
+import { getAutoPushPreferences } from '../../models/workflow-preferences'
 import { CloningRepository } from '../../models/cloning-repository'
 import { IAheadBehind } from '../../models/branch'
 import { Octicon, syncClockwise } from '../octicons'
@@ -59,11 +60,15 @@ interface IMultiRepoDashboardRowProps {
   readonly disabled: boolean
   readonly onToggleSelected: (repository: Repository) => void
   readonly onOpen: (repository: Repository) => void
+  readonly autoPushEnabled: boolean
+  readonly onToggleAutoPush: (repository: Repository) => void
 }
 
 class MultiRepoDashboardRow extends React.Component<IMultiRepoDashboardRowProps> {
   private onToggle = () => this.props.onToggleSelected(this.props.row.repository)
   private onOpen = () => this.props.onOpen(this.props.row.repository)
+  private onToggleAutoPush = () =>
+    this.props.onToggleAutoPush(this.props.row.repository)
 
   private renderOp() {
     const op = this.props.op
@@ -108,6 +113,32 @@ class MultiRepoDashboardRow extends React.Component<IMultiRepoDashboardRowProps>
     )
   }
 
+  private renderAutoPushToggle() {
+    const enabled = this.props.autoPushEnabled
+    return (
+      <TooltippedContent
+        tagName="span"
+        className={`auto-push-toggle ${enabled ? 'on' : 'off'}`}
+        tooltip={
+          enabled
+            ? 'Push automático: ligado (clique para desligar)'
+            : 'Push automático: desligado (clique para ligar)'
+        }
+      >
+        <button
+          type="button"
+          className="auto-push-button"
+          onClick={this.onToggleAutoPush}
+          disabled={this.props.disabled}
+          aria-pressed={enabled}
+          aria-label="Alternar push automático"
+        >
+          <Octicon symbol={syncClockwise} />
+        </button>
+      </TooltippedContent>
+    )
+  }
+
   public render() {
     const { repository, changedFilesCount, aheadBehind } = this.props.row
     const ahead = aheadBehind?.ahead ?? 0
@@ -130,6 +161,8 @@ class MultiRepoDashboardRow extends React.Component<IMultiRepoDashboardRowProps>
         </button>
 
         {this.renderOp()}
+
+        {this.renderAutoPushToggle()}
 
         <span className="repo-indicators">
           {hasChanges && (
@@ -320,6 +353,18 @@ export class MultiRepoDashboard extends React.Component<
       next.add(repository.id)
     }
     this.setState({ selectedRepoIds: next })
+  }
+
+  private onToggleAutoPush = (repository: Repository) => {
+    const current = getAutoPushPreferences(repository.workflowPreferences)
+    this.props.dispatcher
+      .updateRepositoryWorkflowPreferences(repository, {
+        ...repository.workflowPreferences,
+        autoPush: { ...current, enabled: !current.enabled },
+      })
+      .catch(e =>
+        log.error('[MultiRepoDashboard] failed to toggle auto-push', e)
+      )
   }
 
   private onToggleSelectAll = () => {
@@ -692,6 +737,11 @@ export class MultiRepoDashboard extends React.Component<
                     disabled={isRunning}
                     onToggleSelected={this.onToggleSelected}
                     onOpen={this.props.onSelectRepository}
+                    autoPushEnabled={
+                      getAutoPushPreferences(row.repository.workflowPreferences)
+                        .enabled
+                    }
+                    onToggleAutoPush={this.onToggleAutoPush}
                   />
                 ))
               )}

@@ -16,7 +16,15 @@ import { NoRemote } from './no-remote'
 import { readGitIgnoreAtRoot } from '../../lib/git'
 import { OkCancelButtonGroup } from '../dialog/ok-cancel-button-group'
 import { ForkSettings } from './fork-settings'
-import { ForkContributionTarget } from '../../models/workflow-preferences'
+import { AutoPushSettings } from './auto-push-settings'
+import {
+  ForkContributionTarget,
+  WorkflowPreferences,
+  AutoPushPreferences,
+  getAutoPushPreferences,
+  MinAutoPushIntervalMinutes,
+  DefaultAutoPushIntervalMinutes,
+} from '../../models/workflow-preferences'
 import { GitConfigLocation, GitConfig } from './git-config'
 import {
   getConfigValue,
@@ -45,6 +53,7 @@ export enum RepositorySettingsTab {
   Remote = 0,
   IgnoredFiles,
   GitConfig,
+  AutoPush,
   ForkSettings,
 }
 
@@ -66,6 +75,10 @@ interface IRepositorySettingsState {
   readonly errors?: ReadonlyArray<JSX.Element | string>
   readonly forkContributionTarget: ForkContributionTarget
   readonly isLoadingGitConfig: boolean
+  readonly autoPushEnabled: boolean
+  readonly autoPushIntervalText: string
+  readonly autoPushAutoCommit: boolean
+  readonly autoPushCommitMessage: string
 }
 
 export class RepositorySettings extends React.Component<
@@ -74,6 +87,8 @@ export class RepositorySettings extends React.Component<
 > {
   public constructor(props: IRepositorySettingsProps) {
     super(props)
+
+    const autoPush = getAutoPushPreferences(props.repository.workflowPreferences)
 
     this.state = {
       selectedTab:
@@ -93,6 +108,10 @@ export class RepositorySettings extends React.Component<
       initialCommitterName: null,
       initialCommitterEmail: null,
       isLoadingGitConfig: true,
+      autoPushEnabled: autoPush.enabled,
+      autoPushIntervalText: String(autoPush.intervalMinutes),
+      autoPushAutoCommit: autoPush.autoCommit,
+      autoPushCommitMessage: autoPush.commitMessage ?? '',
     }
   }
 
@@ -195,6 +214,10 @@ export class RepositorySettings extends React.Component<
               <Octicon className="icon" symbol={octicons.gitCommit} />
               {__DARWIN__ ? 'Git Config' : 'Git config'}
             </span>
+            <span>
+              <Octicon className="icon" symbol={octicons.arrowUp} />
+              Push automático
+            </span>
             {showForkSettings && (
               <span>
                 <Octicon className="icon" symbol={octicons.repoForked} />
@@ -240,6 +263,21 @@ export class RepositorySettings extends React.Component<
           />
         )
       }
+      case RepositorySettingsTab.AutoPush: {
+        return (
+          <AutoPushSettings
+            enabled={this.state.autoPushEnabled}
+            intervalText={this.state.autoPushIntervalText}
+            autoCommit={this.state.autoPushAutoCommit}
+            commitMessage={this.state.autoPushCommitMessage}
+            onEnabledChanged={this.onAutoPushEnabledChanged}
+            onIntervalTextChanged={this.onAutoPushIntervalTextChanged}
+            onAutoCommitChanged={this.onAutoPushAutoCommitChanged}
+            onCommitMessageChanged={this.onAutoPushCommitMessageChanged}
+          />
+        )
+      }
+
       case RepositorySettingsTab.ForkSettings: {
         if (!isRepositoryWithForkedGitHubRepository(this.props.repository)) {
           return null
@@ -328,17 +366,30 @@ export class RepositorySettings extends React.Component<
       }
     }
 
-    // only update this if it will be different from what we have stored
-    if (
-      this.state.forkContributionTarget !==
-      this.props.repository.workflowPreferences.forkContributionTarget
-    ) {
+    // Persist workflow preferences (fork contribution target + scheduled push)
+    // in a single update so the two don't clobber each other.
+    const existingPrefs = this.props.repository.workflowPreferences
+    const newAutoPush = this.getAutoPushPreferencesFromState()
+    const currentAutoPush = getAutoPushPreferences(existingPrefs)
+    const forkTargetChanged =
+      this.state.forkContributionTarget !== existingPrefs.forkContributionTarget
+    const autoPushChanged =
+      newAutoPush.enabled !== currentAutoPush.enabled ||
+      newAutoPush.intervalMinutes !== currentAutoPush.intervalMinutes ||
+      newAutoPush.autoCommit !== currentAutoPush.autoCommit ||
+      (newAutoPush.commitMessage ?? '') !== (currentAutoPush.commitMessage ?? '')
+
+    if (forkTargetChanged || autoPushChanged) {
+      const newPreferences: WorkflowPreferences = {
+        ...existingPrefs,
+        autoPush: newAutoPush,
+        ...(forkTargetChanged
+          ? { forkContributionTarget: this.state.forkContributionTarget }
+          : {}),
+      }
       await this.props.dispatcher.updateRepositoryWorkflowPreferences(
         this.props.repository,
-        {
-          ...this.props.repository.workflowPreferences,
-          forkContributionTarget: this.state.forkContributionTarget,
-        }
+        newPreferences
       )
     }
 
@@ -434,5 +485,38 @@ export class RepositorySettings extends React.Component<
 
   private onCommitterEmailChanged = (committerEmail: string) => {
     this.setState({ committerEmail })
+  }
+
+  private onAutoPushEnabledChanged = (autoPushEnabled: boolean) => {
+    this.setState({ autoPushEnabled })
+  }
+
+  private onAutoPushIntervalTextChanged = (autoPushIntervalText: string) => {
+    this.setState({ autoPushIntervalText })
+  }
+
+  private onAutoPushAutoCommitChanged = (autoPushAutoCommit: boolean) => {
+    this.setState({ autoPushAutoCommit })
+  }
+
+  private onAutoPushCommitMessageChanged = (autoPushCommitMessage: string) => {
+    this.setState({ autoPushCommitMessage })
+  }
+
+  /** Build the auto-push preferences from the dialog state (parse + clamp). */
+  private getAutoPushPreferencesFromState(): AutoPushPreferences {
+    const parsed = parseInt(this.state.autoPushIntervalText, 10)
+    const intervalMinutes = Math.max(
+      MinAutoPushIntervalMinutes,
+      Number.isNaN(parsed) ? DefaultAutoPushIntervalMinutes : parsed
+    )
+    const commitMessage = this.state.autoPushCommitMessage.trim()
+
+    return {
+      enabled: this.state.autoPushEnabled,
+      intervalMinutes,
+      autoCommit: this.state.autoPushAutoCommit,
+      commitMessage: commitMessage.length > 0 ? commitMessage : undefined,
+    }
   }
 }

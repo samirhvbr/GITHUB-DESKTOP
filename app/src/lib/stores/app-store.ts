@@ -257,6 +257,7 @@ import { TypedBaseStore } from './base-store'
 import { MergeTreeResult } from '../../models/merge'
 import { promiseWithMinimumTimeout } from '../promise'
 import { BackgroundFetcher } from './helpers/background-fetcher'
+import { BackgroundPusher } from './helpers/background-pusher'
 import { RepositoryStateCache } from './repository-state-cache'
 import { readEmoji } from '../read-emoji'
 import { Emoji } from '../emoji'
@@ -324,7 +325,12 @@ import { parseRemote } from '../../lib/remote-parsing'
 import { createTutorialRepository } from './helpers/create-tutorial-repository'
 import { sendNonFatalException } from '../helpers/non-fatal-exception'
 import { getDefaultDir } from '../../ui/lib/default-dir'
-import { WorkflowPreferences } from '../../models/workflow-preferences'
+import {
+  WorkflowPreferences,
+  AutoPushPreferences,
+  getAutoPushPreferences,
+  DefaultAutoCommitMessage,
+} from '../../models/workflow-preferences'
 import { RepositoryIndicatorUpdater } from './helpers/repository-indicator-updater'
 import { isAttributableEmailFor } from '../email'
 import { TrashNameLabel } from '../../ui/lib/context-menu'
@@ -561,6 +567,20 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
   /** The background fetcher for the currently selected repository. */
   private currentBackgroundFetcher: BackgroundFetcher | null = null
+
+  /**
+   * Background pushers for repositories with scheduled push enabled, keyed by
+   * repository id. Unlike the single `currentBackgroundFetcher` (selected repo
+   * only), scheduled push runs for ALL opted-in repositories at once. See
+   * `reconcileBackgroundPushers`. Fork feature (multi-repo dashboard).
+   */
+  private readonly backgroundPushers = new Map<number, BackgroundPusher>()
+
+  /**
+   * The interval signature (minutes) of each running pusher, so reconciliation
+   * can detect an interval change and restart only the affected pusher.
+   */
+  private readonly backgroundPusherSignatures = new Map<number, string>()
 
   private currentBranchPruner: BranchPruner | null = null
 
@@ -1022,6 +1042,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.repositoriesStore.onDidUpdate(updateRepositories => {
       this.repositories = updateRepositories
       this.updateRepositorySelectionAfterRepositoriesChanged()
+      this.reconcileBackgroundPushers()
       this.emitUpdate()
     })
 
@@ -2353,6 +2374,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.repositories = repositories
 
     this.updateRepositorySelectionAfterRepositoriesChanged()
+
+    this.reconcileBackgroundPushers()
 
     this.sidebarWidth = constrain(
       getNumber(sidebarWidthConfigKey, defaultSidebarWidth)
@@ -7805,6 +7828,136 @@ export class AppStore extends TypedBaseStore<IAppState> {
       repository,
       workflowPreferences
     )
+    // The store emits `onDidUpdate`, which refreshes `this.repositories` and
+    // triggers `reconcileBackgroundPushers`, so scheduled push picks up the new
+    // preferences without any extra wiring here.
+  }
+
+  /**
+   * Reconcile the running background pushers with the current repositories and
+   * their auto-push preferences: start a pusher for every repository that has
+   * scheduled push enabled, stop the ones that no longer do (disabled/removed),
+   * and restart a pusher whose interval changed.
+   *
+   * Fork feature (multi-repo dashboard — scheduled push). Called whenever the
+   * repository list or its preferences change.
+   */
+  private reconcileBackgroundPushers() {
+    const desired = new Map<number, AutoPushPreferences>()
+    for (const repo of this.repositories) {
+      const prefs = getAutoPushPreferences(repo.workflowPreferences)
+      if (prefs.enabled) {
+        desired.set(repo.id, prefs)
+      }
+    }
+
+    // Stop pushers that are no longer wanted or whose interval changed.
+    for (const [id, pusher] of this.backgroundPushers) {
+      const want = desired.get(id)
+      const signature = want === undefined ? null : String(want.intervalMinutes)
+      if (
+        signature === null ||
+        signature !== this.backgroundPusherSignatures.get(id)
+      ) {
+        pusher.stop()
+        this.backgroundPushers.delete(id)
+        this.backgroundPusherSignatures.delete(id)
+      }
+    }
+
+    // Start pushers for wanted repositories that don't have one running.
+    for (const [id, prefs] of desired) {
+      if (this.backgroundPushers.has(id)) {
+        continue
+      }
+
+      const repository = this.repositories.find(r => r.id === id)
+      if (repository === undefined) {
+        continue
+      }
+
+      const intervalMs = prefs.intervalMinutes * 60 * 1000
+      const pusher = new BackgroundPusher(
+        repository,
+        intervalMs,
+        r => this.autoPushRepository(r),
+        r => this.isAutoPushEnabled(r)
+      )
+      this.backgroundPushers.set(id, pusher)
+      this.backgroundPusherSignatures.set(id, String(prefs.intervalMinutes))
+      pusher.start()
+    }
+  }
+
+  /** Is scheduled push currently enabled for this repository? */
+  private isAutoPushEnabled(repository: Repository): boolean {
+    const current =
+      this.repositories.find(r => r.id === repository.id) ?? repository
+    return getAutoPushPreferences(current.workflowPreferences).enabled
+  }
+
+  /**
+   * Perform a scheduled push for a repository: refresh it, optionally
+   * auto-commit pending changes with a "standard" message, then push — but only
+   * when it's safe (has a remote, a valid branch tip and a tracked upstream with
+   * commits ahead). Never force-pushes and never opens a popup.
+   *
+   * Fork feature (multi-repo dashboard — scheduled push). Driven by
+   * `BackgroundPusher`; see `reconcileBackgroundPushers`.
+   */
+  private async autoPushRepository(repository: Repository): Promise<void> {
+    // Operate on the freshest repository object — preferences or path may have
+    // changed since the pusher was created.
+    const repo =
+      this.repositories.find(r => r.id === repository.id) ?? repository
+
+    const prefs = getAutoPushPreferences(repo.workflowPreferences)
+    if (!prefs.enabled) {
+      return
+    }
+
+    // Refresh so we act on the current status / branch / remote.
+    await this._refreshRepository(repo)
+
+    let state = this.repositoryStateCache.get(repo)
+
+    // Optionally commit pending changes first, with a "standard" message.
+    if (
+      prefs.autoCommit &&
+      state.changesState.workingDirectory.files.length > 0
+    ) {
+      await this._changeIncludeAllFiles(repo, true)
+      const summary =
+        (prefs.commitMessage ?? '').trim() || DefaultAutoCommitMessage
+      const committed = await this._commitIncludedChanges(repo, {
+        summary,
+        description: null,
+      })
+      if (committed) {
+        await this._refreshRepository(repo)
+      }
+      state = this.repositoryStateCache.get(repo)
+    }
+
+    // Safety guards mirroring the dashboard's batch push: a remote must exist, a
+    // valid branch tip, a tracked upstream and at least one commit to push. This
+    // avoids the "Publish repository" popup and never force-pushes.
+    if (state.remote === null) {
+      return
+    }
+    if (state.branchesState.tip.kind !== TipState.Valid) {
+      return
+    }
+    const aheadBehind = state.aheadBehind
+    if (aheadBehind === null || aheadBehind.ahead <= 0) {
+      return
+    }
+
+    log.info(
+      `[AutoPush] pushing '${repo.name}' (${aheadBehind.ahead} commit(s) ahead)`
+    )
+    await this._push(repo)
+    await this._refreshRepository(repo)
   }
 
   /**
