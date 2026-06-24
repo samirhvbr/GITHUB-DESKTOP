@@ -4066,6 +4066,16 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }
   }
 
+  /**
+   * Refresh the aggregate indicator (changed files + ahead/behind) for a single
+   * repository and emit an update. Used by the multi-repo dashboard to reflect
+   * the new state right after a batch pull/push, without waiting for the
+   * periodic RepositoryIndicatorUpdater.
+   */
+  public _refreshRepositoryIndicator(repository: Repository): Promise<void> {
+    return this.refreshIndicatorForRepository(repository)
+  }
+
   private getRepositoriesForIndicatorRefresh = () => {
     // The currently selected repository will get refreshed by both the
     // BackgroundFetcher and the refreshRepository call from the

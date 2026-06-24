@@ -393,6 +393,14 @@ export class Dispatcher {
   }
 
   /**
+   * Refresh the aggregate indicator (changed files + ahead/behind) for a single
+   * repository, e.g. right after a batch pull/push in the multi-repo dashboard.
+   */
+  public refreshRepositoryIndicator(repository: Repository): Promise<void> {
+    return this.appStore._refreshRepositoryIndicator(repository)
+  }
+
+  /**
    * Refresh the commit author of a repository. Required after changing git's
    * user name or email address.
    */

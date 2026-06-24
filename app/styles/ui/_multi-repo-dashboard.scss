@@ -23,6 +23,38 @@
     }
   }
 
+  .multi-repo-dashboard-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing);
+    padding: var(--spacing) var(--spacing-double);
+    border-bottom: var(--base-border);
+
+    .select-all {
+      flex-shrink: 0;
+    }
+
+    .batch-actions {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing);
+
+      .button-component .octicon {
+        margin-right: var(--spacing-half);
+      }
+
+      .batch-running,
+      .batch-notice {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--spacing-quarter);
+        font-size: var(--font-size-sm);
+        color: var(--text-secondary-color);
+      }
+    }
+  }
+
   .multi-repo-dashboard-list {
     flex: 1;
     overflow-y: auto;
@@ -35,27 +67,99 @@
     }
   }
 
+  .multi-repo-status-report {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+
+    .report-toolbar {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing);
+      padding: var(--spacing) var(--spacing-double);
+      border-bottom: var(--base-border);
+
+      .button-component .octicon {
+        margin-right: var(--spacing-half);
+      }
+    }
+
+    .report-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: var(--spacing-double);
+
+      .report-summary {
+        margin: 0 0 var(--spacing) 0;
+        color: var(--text-secondary-color);
+      }
+
+      .report-section {
+        margin-bottom: var(--spacing-double);
+
+        h3 {
+          margin: 0 0 var(--spacing-half) 0;
+          font-size: var(--font-size);
+          font-weight: var(--font-weight-semibold);
+        }
+
+        ul {
+          margin: 0;
+          padding-left: var(--spacing-double);
+        }
+
+        li {
+          margin-bottom: var(--spacing-quarter);
+        }
+      }
+    }
+  }
+
   .repo-row {
     display: flex;
     align-items: center;
     gap: var(--spacing);
     width: 100%;
     padding: var(--spacing);
-    border: none;
     border-radius: var(--border-radius);
-    background: transparent;
-    color: var(--text-color);
-    text-align: left;
-    cursor: pointer;
-    font-size: var(--font-size);
+
+    // Zebra striping: alternate rows get a slightly lighter tone so the eye can
+    // follow a single row across its full width.
+    &:nth-child(even) {
+      background: var(--box-alt-background-color);
+    }
 
     &:hover {
       background: var(--list-item-hover-background-color);
     }
 
-    &:focus {
-      outline: none;
-      box-shadow: 0 0 0 2px var(--focus-color);
+    .repo-select {
+      flex-shrink: 0;
+    }
+
+    .repo-open {
+      display: flex;
+      align-items: center;
+      gap: var(--spacing);
+      flex: 1;
+      min-width: 0;
+      border: none;
+      background: transparent;
+      color: var(--text-color);
+      text-align: left;
+      cursor: pointer;
+      font-size: var(--font-size);
+
+      &:hover .repo-name {
+        text-decoration: underline;
+      }
+
+      &:focus {
+        outline: none;
+        box-shadow: 0 0 0 2px var(--focus-color);
+        border-radius: var(--border-radius);
+      }
     }
 
     .repo-icon {
@@ -68,6 +172,29 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+    }
+
+    .op-status {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+
+      .octicon {
+        width: 14px;
+        height: 14px;
+      }
+
+      &.running {
+        color: var(--text-secondary-color);
+      }
+
+      &.done {
+        color: var(--ahead-behind-fill-color);
+      }
+
+      &.error {
+        color: var(--dialog-error-color);
+      }
     }
 
     .repo-indicators {

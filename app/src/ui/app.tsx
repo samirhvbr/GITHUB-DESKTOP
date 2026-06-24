@@ -3800,6 +3800,7 @@ export class App extends React.Component<IAppProps, IAppState> {
         <MultiRepoDashboard
           repositories={this.state.repositories}
           localRepositoryStateLookup={this.state.localRepositoryStateLookup}
+          dispatcher={this.props.dispatcher}
           onSelectRepository={this.onDashboardSelectRepository}
           onClose={this.onCloseMultiRepoDashboard}
         />
