@@ -503,6 +503,50 @@ export class MultiRepoDashboard extends React.Component<
     this.setState({ selectedRepoIds: next })
   }
 
+  /**
+   * Liga/desliga o push automático nos repositórios selecionados de uma vez.
+   * Liga sempre com auto-commit desligado (modo seguro) — assim, mesmo que um
+   * repo de terceiro entre na seleção sem querer, ele no máximo tenta um push
+   * (que falha sem permissão e é só logado), nunca cria commits nem força nada.
+   */
+  private onToggleAutoPushSelected = () => {
+    if (this.state.isRunning) {
+      return
+    }
+    const selected = this.getRows().filter(r =>
+      this.state.selectedRepoIds.has(r.repository.id)
+    )
+    if (selected.length === 0) {
+      return
+    }
+
+    const allOn = selected.every(
+      r => getAutoPushPreferences(r.repository.workflowPreferences).enabled
+    )
+    const enable = !allOn
+
+    for (const row of selected) {
+      const current = getAutoPushPreferences(row.repository.workflowPreferences)
+      if (current.enabled === enable) {
+        continue
+      }
+      this.props.dispatcher
+        .updateRepositoryWorkflowPreferences(row.repository, {
+          ...row.repository.workflowPreferences,
+          autoPush: { ...current, enabled: enable },
+        })
+        .catch(e =>
+          log.error('[MultiRepoDashboard] batch auto-push toggle failed', e)
+        )
+    }
+
+    this.setState({
+      notice: `Push automático ${enable ? 'ligado' : 'desligado'} em ${
+        selected.length
+      } repo(s).`,
+    })
+  }
+
   private onToggleSelected = (repository: Repository) => {
     if (this.state.isRunning) {
       return
@@ -1037,6 +1081,13 @@ export class MultiRepoDashboard extends React.Component<
     const actionDisabled = isRunning || selectedCount === 0
     const countLabel = selectedCount > 0 ? ` (${selectedCount})` : ''
 
+    const selectedRows = rows.filter(r => selectedRepoIds.has(r.repository.id))
+    const selectedAllAutoPush =
+      selectedRows.length > 0 &&
+      selectedRows.every(
+        r => getAutoPushPreferences(r.repository.workflowPreferences).enabled
+      )
+
     return (
       <UiView id="multi-repo-dashboard">
         <header className="multi-repo-dashboard-header">
@@ -1101,6 +1152,16 @@ export class MultiRepoDashboard extends React.Component<
                   <Button onClick={this.onPush} disabled={actionDisabled}>
                     <Octicon symbol={octicons.arrowUp} />
                     Push{countLabel}
+                  </Button>
+                  <Button
+                    onClick={this.onToggleAutoPushSelected}
+                    disabled={actionDisabled}
+                  >
+                    <Octicon symbol={syncClockwise} />
+                    {selectedAllAutoPush
+                      ? 'Desligar auto-push'
+                      : 'Ligar auto-push'}
+                    {countLabel}
                   </Button>
                   <Button onClick={this.onShowReport} disabled={isRunning}>
                     <Octicon symbol={octicons.listUnordered} />

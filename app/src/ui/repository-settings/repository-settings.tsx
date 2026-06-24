@@ -89,6 +89,11 @@ export class RepositorySettings extends React.Component<
     super(props)
 
     const autoPush = getAutoPushPreferences(props.repository.workflowPreferences)
+    log.info(
+      `[WFP] open ${props.repository.name} (id=${
+        props.repository.id
+      }) wfp=${JSON.stringify(props.repository.workflowPreferences)}`
+    )
 
     this.state = {
       selectedTab:
@@ -274,6 +279,7 @@ export class RepositorySettings extends React.Component<
             onIntervalTextChanged={this.onAutoPushIntervalTextChanged}
             onAutoCommitChanged={this.onAutoPushAutoCommitChanged}
             onCommitMessageChanged={this.onAutoPushCommitMessageChanged}
+            onTestNow={this.onTestAutoPushNow}
           />
         )
       }
@@ -378,6 +384,12 @@ export class RepositorySettings extends React.Component<
       newAutoPush.intervalMinutes !== currentAutoPush.intervalMinutes ||
       newAutoPush.autoCommit !== currentAutoPush.autoCommit ||
       (newAutoPush.commitMessage ?? '') !== (currentAutoPush.commitMessage ?? '')
+
+    log.info(
+      `[WFP] submit ${this.props.repository.name} new=${JSON.stringify(
+        newAutoPush
+      )} changed=${autoPushChanged}`
+    )
 
     if (forkTargetChanged || autoPushChanged) {
       const newPreferences: WorkflowPreferences = {
@@ -501,6 +513,15 @@ export class RepositorySettings extends React.Component<
 
   private onAutoPushCommitMessageChanged = (autoPushCommitMessage: string) => {
     this.setState({ autoPushCommitMessage })
+  }
+
+  private onTestAutoPushNow = () => {
+    const prefs = this.getAutoPushPreferencesFromState()
+    return this.props.dispatcher.runScheduledPushNow(
+      this.props.repository,
+      prefs.autoCommit,
+      prefs.commitMessage
+    )
   }
 
   /** Build the auto-push preferences from the dialog state (parse + clamp). */

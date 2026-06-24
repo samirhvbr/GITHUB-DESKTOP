@@ -7886,7 +7886,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this.backgroundPushers.set(id, pusher)
       this.backgroundPusherSignatures.set(id, String(prefs.intervalMinutes))
       pusher.start()
+      log.info(
+        `[AutoPush] pusher iniciado: '${repository.name}' a cada ${prefs.intervalMinutes}min`
+      )
     }
+
+    log.info(
+      `[AutoPush] reconcile: ${this.backgroundPushers.size} pusher(s) ativo(s)`
+    )
   }
 
   /** Is scheduled push currently enabled for this repository? */
@@ -7913,51 +7920,96 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     const prefs = getAutoPushPreferences(repo.workflowPreferences)
     if (!prefs.enabled) {
+      log.info(`[AutoPush] tick '${repo.name}': desligado, ignorando`)
       return
     }
 
+    log.info(`[AutoPush] tick '${repo.name}' (agendado)`)
+    await this.runScheduledPush(repo, prefs.autoCommit, prefs.commitMessage)
+  }
+
+  /**
+   * Manually run the scheduled-push flow for a repository right now, regardless
+   * of whether scheduled push is enabled. Used by the "Testar agora" button in
+   * repository settings. Returns a short human-readable result.
+   */
+  public async _runScheduledPushNow(
+    repository: Repository,
+    autoCommit: boolean,
+    commitMessage: string | undefined
+  ): Promise<string> {
+    const repo =
+      this.repositories.find(r => r.id === repository.id) ?? repository
+    log.info(`[AutoPush] teste manual '${repo.name}'`)
+    return this.runScheduledPush(repo, autoCommit, commitMessage)
+  }
+
+  /**
+   * Core scheduled-push flow: refresh, optionally auto-commit pending changes,
+   * then push — only when it's safe (remote present, valid tip, tracked upstream
+   * with commits ahead). Never force-pushes, never opens a popup. Returns a
+   * short status string for diagnostics and UI feedback.
+   *
+   * Fork feature (multi-repo dashboard — scheduled push).
+   */
+  private async runScheduledPush(
+    repository: Repository,
+    autoCommit: boolean,
+    commitMessage: string | undefined
+  ): Promise<string> {
     // Refresh so we act on the current status / branch / remote.
-    await this._refreshRepository(repo)
+    await this._refreshRepository(repository)
+    let state = this.repositoryStateCache.get(repository)
 
-    let state = this.repositoryStateCache.get(repo)
-
-    // Optionally commit pending changes first, with a "standard" message.
-    if (
-      prefs.autoCommit &&
-      state.changesState.workingDirectory.files.length > 0
-    ) {
-      await this._changeIncludeAllFiles(repo, true)
-      const summary =
-        (prefs.commitMessage ?? '').trim() || DefaultAutoCommitMessage
-      const committed = await this._commitIncludedChanges(repo, {
+    let committed = false
+    if (autoCommit && state.changesState.workingDirectory.files.length > 0) {
+      await this._changeIncludeAllFiles(repository, true)
+      const summary = (commitMessage ?? '').trim() || DefaultAutoCommitMessage
+      committed = await this._commitIncludedChanges(repository, {
         summary,
         description: null,
       })
       if (committed) {
-        await this._refreshRepository(repo)
+        await this._refreshRepository(repository)
       }
-      state = this.repositoryStateCache.get(repo)
+      state = this.repositoryStateCache.get(repository)
     }
 
-    // Safety guards mirroring the dashboard's batch push: a remote must exist, a
-    // valid branch tip, a tracked upstream and at least one commit to push. This
-    // avoids the "Publish repository" popup and never force-pushes.
+    // Safety guards: a remote must exist, a valid branch tip, a tracked upstream
+    // and at least one commit to push. Avoids the "Publish repository" popup and
+    // never force-pushes.
     if (state.remote === null) {
-      return
+      const msg = `${repository.name}: sem remote configurado`
+      log.info(`[AutoPush] ${msg}`)
+      return msg
     }
     if (state.branchesState.tip.kind !== TipState.Valid) {
-      return
+      const msg = `${repository.name}: branch sem tip válido (unborn/detached)`
+      log.info(`[AutoPush] ${msg}`)
+      return msg
     }
     const aheadBehind = state.aheadBehind
-    if (aheadBehind === null || aheadBehind.ahead <= 0) {
-      return
+    if (aheadBehind === null) {
+      const msg = `${repository.name}: sem upstream rastreado`
+      log.info(`[AutoPush] ${msg}`)
+      return msg
+    }
+    if (aheadBehind.ahead <= 0) {
+      const msg = `${repository.name}: nada a enviar (0 à frente)`
+      log.info(`[AutoPush] ${msg}`)
+      return msg
     }
 
     log.info(
-      `[AutoPush] pushing '${repo.name}' (${aheadBehind.ahead} commit(s) ahead)`
+      `[AutoPush] pushing '${repository.name}' (${aheadBehind.ahead} commit(s) ahead)`
     )
-    await this._push(repo)
-    await this._refreshRepository(repo)
+    await this._push(repository)
+    await this._refreshRepository(repository)
+    const msg = `${repository.name}: ${aheadBehind.ahead} commit(s) enviado(s)${
+      committed ? ' (com auto-commit)' : ''
+    }`
+    log.info(`[AutoPush] ${msg}`)
+    return msg
   }
 
   /**

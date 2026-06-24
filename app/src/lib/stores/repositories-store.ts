@@ -343,7 +343,15 @@ export class RepositoriesStore extends TypedBaseStore<
     repository: Repository,
     workflowPreferences: WorkflowPreferences
   ): Promise<void> {
-    await this.db.repositories.update(repository.id, { workflowPreferences })
+    log.info(
+      `[WFP] store.update id=${repository.id} wfp=${JSON.stringify(
+        workflowPreferences
+      )}`
+    )
+    const updated = await this.db.repositories.update(repository.id, {
+      workflowPreferences,
+    })
+    log.info(`[WFP] store.update id=${repository.id} rows=${updated}`)
 
     this.emitUpdatedRepositories()
   }

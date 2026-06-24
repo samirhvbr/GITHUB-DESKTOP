@@ -1,5 +1,6 @@
 import * as React from 'react'
 import { DialogContent } from '../dialog'
+import { Button } from '../lib/button'
 import { Checkbox, CheckboxValue } from '../lib/checkbox'
 import { TextBox } from '../lib/text-box'
 import { DefaultAutoCommitMessage } from '../../models/workflow-preferences'
@@ -13,6 +14,17 @@ interface IAutoPushSettingsProps {
   readonly onIntervalTextChanged: (text: string) => void
   readonly onAutoCommitChanged: (autoCommit: boolean) => void
   readonly onCommitMessageChanged: (message: string) => void
+
+  /**
+   * Run the scheduled-push flow right now with the current settings (without
+   * waiting for the timer). Resolves with a short result message.
+   */
+  readonly onTestNow: () => Promise<string>
+}
+
+interface IAutoPushSettingsState {
+  readonly testing: boolean
+  readonly testResult: string | null
 }
 
 /**
@@ -22,9 +34,17 @@ interface IAutoPushSettingsProps {
  *
  * Both are OFF by default. The actual push only runs when there are commits
  * ahead of a tracked upstream and never force-pushes (see
- * `AppStore.autoPushRepository`).
+ * `AppStore.runScheduledPush`).
  */
-export class AutoPushSettings extends React.Component<IAutoPushSettingsProps> {
+export class AutoPushSettings extends React.Component<
+  IAutoPushSettingsProps,
+  IAutoPushSettingsState
+> {
+  public constructor(props: IAutoPushSettingsProps) {
+    super(props)
+    this.state = { testing: false, testResult: null }
+  }
+
   public render() {
     const { enabled, autoCommit } = this.props
 
@@ -66,6 +86,19 @@ export class AutoPushSettings extends React.Component<IAutoPushSettingsProps> {
           onValueChanged={this.props.onCommitMessageChanged}
           disabled={!enabled || !autoCommit}
         />
+
+        <div className="auto-push-test">
+          <Button onClick={this.onTestNow} disabled={this.state.testing}>
+            {this.state.testing ? 'Testando…' : 'Testar agora'}
+          </Button>
+          {this.state.testResult !== null && (
+            <p className="auto-push-test-result">{this.state.testResult}</p>
+          )}
+        </div>
+        <p className="auto-push-description">
+          "Testar agora" roda o fluxo na hora (refresh → auto-commit se ligado →
+          push) com as opções acima, sem esperar o agendamento.
+        </p>
       </DialogContent>
     )
   }
@@ -76,5 +109,18 @@ export class AutoPushSettings extends React.Component<IAutoPushSettingsProps> {
 
   private onAutoCommitChanged = (event: React.FormEvent<HTMLInputElement>) => {
     this.props.onAutoCommitChanged(event.currentTarget.checked)
+  }
+
+  private onTestNow = async () => {
+    this.setState({ testing: true, testResult: null })
+    try {
+      const result = await this.props.onTestNow()
+      this.setState({ testing: false, testResult: result })
+    } catch (e) {
+      this.setState({
+        testing: false,
+        testResult: `Erro: ${e instanceof Error ? e.message : String(e)}`,
+      })
+    }
   }
 }

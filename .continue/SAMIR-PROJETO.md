@@ -26,3 +26,10 @@ DEMANDAS FUTURAS
    fiz o push e tambem foi ok o resultado
 
 - fiz um push manual e encontrei arquivos commitados que o push do app não subiu, tenho que testar de novo, não posso garantir esta falha
+
+
+
+- possibilidade de conexão em um repositorio git externo, de terceiro
+
+
+- status não estou tendo retorno
