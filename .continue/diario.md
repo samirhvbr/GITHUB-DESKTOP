@@ -4,6 +4,32 @@ Log append-only. Uma entrada por sessão, mais recente no topo.
 
 ---
 
+## 2026-06-23 (cont. 5) — Pull/Push em lote + status/relatório + multiplataforma (v0.4.0)
+
+- **PRIORIDADE entregue:** ações em lote no **Painel de repositórios** (estende a Fase 1).
+  - **Pull/Push em lote** nos selecionados (checkbox + "Selecionar todos" tri-state),
+    **até 3 simultâneos** (`p-limit`, padrão do `ahead-behind-store`); feedback por repo
+    (spinner → ✓/✗ com tooltip) e `dispatcher.refreshRepositoryIndicator(repo)` após cada um.
+  - Filtro `canSyncInBatch = aheadBehind !== null` (sem upstream → pulado, evita o popup
+    "Publish repository" em massa).
+  - **Auto-refresh ao abrir** o painel (`componentDidMount` → refresh de todos, até 6;
+    `loadStatus` é local/rápido) — **resolveu** o "Sem upstream (25)" enganoso (o lookup
+    começa vazio a cada start). **Validado no app.** Botão **Atualizar** também.
+  - **Tela de relatório** (botão "Status"): categorias (commitar/atrás/à frente/sem
+    upstream/atualizados) + última ação em lote + **Copiar relatório** (texto). **Validado.**
+  - **Zebra** (`:nth-child(even)` com `--box-alt-background-color`), **X** em erro
+    (`octicons.x`) e `log.error` no catch (loga em `userData/logs`).
+  - Nova infra: `app-store._refreshRepositoryIndicator` + `dispatcher.refreshRepositoryIndicator`.
+    Dashboard recebe `dispatcher` (app.tsx).
+- **Multiplataforma:** `run-local.sh` (dev Mac/Linux), `build-dist.sh`/`.ps1`/`.cmd`
+  (produção), `.gitattributes` força `*.sh eol=lf`, guia `run-mac-linux.md`. **Achado:**
+  `script/package.ts` só empacota `darwin`/`win32` → instalador Linux é trabalho futuro
+  (dev build + run roda nos 3). **Validado só no Windows ainda.**
+- **Versão do fork → 0.4.0.** Reload da UI (Ctrl+Alt+R) não funciona nesta build;
+  fechar/reabrir (`run-local`) é o caminho — fechamentos do operador são intencionais, não crash.
+
+---
+
 ## 2026-06-23 (cont. 4) — Polimentos + Select all + versionamento (tudo testado no app)
 
 - **App rodando no Windows** (Node 24.16, yarn vendorizado). Validado de ponta a ponta.

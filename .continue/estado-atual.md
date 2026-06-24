@@ -25,12 +25,18 @@ Transformar o GitHub Desktop num gerenciador **multi-repositório**. Demandas co
 
 ## Versão do fork
 
-**v0.3.0** (`app/src/lib/fork-version.ts`; changelog em [VERSION.md](../VERSION.md)).
+**v0.4.0** (`app/src/lib/fork-version.ts`; changelog em [VERSION.md](../VERSION.md)).
 Aparece na tela "Let's get started!" e no diálogo **About**. Independente da
 versão upstream (`app/package.json` = `3.5.13-beta3`).
 
-## Onde paramos (2026-06-23, cont. 4)
+## Onde paramos (2026-06-23, cont. 5)
 
+- ✅ **Pull/Push em lote + status agregado + relatório** no Painel de repositórios
+  (v0.4.0): seleção, **até 3 simultâneos**, **auto-refresh ao abrir**, botão **Atualizar**,
+  tela **Status** (relatório por categoria + última ação + "Copiar"), zebra + X em erro.
+  Validado no Windows.
+- ✅ **Multiplataforma:** scripts `run-local.sh` + `build-dist.{sh,ps1,cmd}` + guia
+  [run-mac-linux.md](run-mac-linux.md). Dev roda nos 3; instalador Linux pendente.
 - ✅ Ambiente de dev rodando no Windows (Node 24, yarn vendorizado; `run-local`).
 - ✅ **Fase 1 (dashboard)** + **Fase 2b (clone em lote)** validadas no app.
 - ✅ **Polimentos do clone em lote** (testados): (1) scroll não volta mais ao topo
@@ -61,14 +67,17 @@ No Linux atual não há Node 24 nem nvm; o app roda de fato no **Windows** — g
 
 > Todo o `.continue` segue no roadmap, mas a **prioridade atual** é o item de ações em lote.
 
-- [ ] **PRIORIDADE — Pull/Push em lote + status agregado:** no dashboard multi-repo,
-      selecionar vários repos e fazer **Pull all / Push all**; mostrar um **status de
-      todos (ou dos selecionados)** destacando quem tem commit pendente (working dir sujo)
-      ou está atrás/à frente do remoto. Reusa `dispatcher.pull/push(repo)` +
-      `localRepositoryStateLookup` (ver [plano-tecnico.md](plano-tecnico.md)).
+- [x] **Pull/Push em lote + status agregado + relatório** no dashboard — feito e
+      validado no Windows (v0.4.0): seleção, até 3 simultâneos, auto-refresh, tela de
+      relatório com "Copiar".
+- [ ] **Validar no Mac e no Linux** com `run-local.sh` (código portável; só falta rodar lá).
+- [ ] **Empacotar instalador no Linux:** portar `script/package.ts` (só darwin/win32 hoje).
 - [x] Polimentos do clone em lote (scroll, leveza, pular existentes) — feito.
 - [x] **Select all** no clone em lote — feito.
 - [x] Versionamento do fork (VERSION.md + UI) — feito (v0.3.0).
 - [ ] **Fase 2c:** ajuste individual de pasta por repo + aba "usuário público" (`streamPublicRepositories`).
 - [ ] **Fase 3:** push agendado + auto-commit opt-in — ver [plano-tecnico.md](plano-tecnico.md).
-- [ ] **Multiplataforma** (SAMIR-PROJETO): Windows / macOS / Linux (Gnome, Debian Trixie).
+- [~] **Multiplataforma** (SAMIR-PROJETO): código é portável; **Windows validado**.
+      Launcher `run-local.sh` (Mac/Linux) + guia [run-mac-linux.md](run-mac-linux.md)
+      criados. **Falta buildar/rodar no Mac e no Linux.** Empacotamento de produção:
+      macOS/Windows ✅; **Linux ❌** (`script/package.ts` só trata darwin/win32 — portar depois).

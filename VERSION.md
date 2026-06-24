@@ -9,7 +9,25 @@ release do GitHub Desktop este fork é baseado.
 > A versão em execução aparece na tela inicial ("Let's get started!") e no
 > diálogo **About**.
 
-## 0.3.0 — atual
+## 0.4.0 — atual
+
+- **Painel de repositórios — ações em lote:**
+  - **Pull/Push em lote** nos repos selecionados (checkbox por linha + "Selecionar
+    todos"), sincronizando **até 3 ao mesmo tempo** (`p-limit`); feedback por repo
+    (spinner → ✓ ok / ✗ erro com tooltip) e refresh do status ao terminar.
+  - **Status agregado atualizado ao abrir** o painel (auto-refresh via `loadStatus`
+    local) + botão **Atualizar**; resumo no header (para commitar / atrás / à frente).
+    Novo `dispatcher.refreshRepositoryIndicator`.
+  - **Tela de relatório (botão "Status"):** resumo por categoria (para commitar,
+    atrás, à frente, sem upstream, atualizados) + resultado da última ação em lote,
+    com **"Copiar relatório"** (log em texto).
+  - **Zebra** (linhas pares mais claras) e **X** vermelho em erro; falhas também
+    no log do app.
+- **Multiplataforma:** `run-local.sh` (dev Mac/Linux) e `build-dist.sh`/`.ps1`/`.cmd`
+  (produção) + guia [run-mac-linux.md](.continue/run-mac-linux.md). Empacotamento de
+  instalador: macOS/Windows ✅; Linux ❌ (portar `script/package.ts`).
+
+## 0.3.0
 
 - **Select all** no clone em lote: marca/desmarca todos de uma vez, com 3 estados
   (todos / alguns / nenhum) e respeitando o filtro de busca.
