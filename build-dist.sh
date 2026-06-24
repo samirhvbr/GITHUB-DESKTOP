@@ -68,10 +68,10 @@ case "$OS" in
     echo "OK: instalador/app em dist/."
     ;;
   Linux)
-    echo "==> [3/3] empacotamento PULADO no Linux."
-    echo "    O app de produção (runnable) está em dist/GitHubDesktop-*-linux-*/."
-    echo "    Gerar instalador .deb/AppImage exige portar script/package.ts"
-    echo "    (estilo shiftkey/desktop). Ainda não suportado."
+    echo "==> [3/3] yarn package (gera o instalador .deb)..."
+    echo "    Requer dpkg + fakeroot no sistema (Debian/Ubuntu já têm)."
+    yarn package
+    echo "OK: .deb em dist/. (AppImage/.rpm ainda não — só .deb por enquanto.)"
     ;;
   *)
     echo "==> [3/3] SO '$OS' desconhecido para empacotar; build:prod concluído em dist/."

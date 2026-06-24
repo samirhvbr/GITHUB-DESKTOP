@@ -25,7 +25,8 @@ release do GitHub Desktop este fork é baseado.
     no log do app.
 - **Multiplataforma:** `run-local.sh` (dev Mac/Linux) e `build-dist.sh`/`.ps1`/`.cmd`
   (produção) + guia [run-mac-linux.md](.continue/run-mac-linux.md). Empacotamento de
-  instalador: macOS/Windows ✅; Linux ❌ (portar `script/package.ts`).
+  instalador: macOS/Windows ✅; **Linux `.deb`** via `packageLinux()` no
+  `script/package.ts` (electron-installer-debian) — escrito, **a validar no Debian**.
 
 ## 0.3.0
 

@@ -45,11 +45,14 @@ execução: `chmod +x run-local.sh`.)
 |-----------|:---:|:---:|-----------|
 | **macOS** | ✅ | ✅ | `.app` / `.zip` (assinatura à parte) |
 | **Windows** | ✅ | ✅ | instalador (electron-winstaller) |
-| **Linux** | ✅ (compila) | ❌ | `script/package.ts` só trata `darwin`/`win32` → imprime *"I don't know how to package for linux"*. **Empacotar no Linux exige portar** o setup (estilo `shiftkey/desktop`: electron-installer-debian / appimage). |
+| **Linux** | ✅ | ✅ `.deb` | `script/package.ts` agora tem `packageLinux()` (electron-installer-debian). Requer **dpkg + fakeroot** no sistema (Debian/Ubuntu já têm). AppImage/`.rpm` ainda não. ⏳ **A validar no Debian Trixie.** |
 
-Ou seja: **dev build + run funciona nos 3**; **instalador de produção** sai em
-**macOS e Windows** hoje. Linux roda em dev; o pacote `.deb`/AppImage é trabalho
-futuro.
+Ou seja: **dev build + run funciona nos 3**; **instalador** sai em **macOS,
+Windows e agora Linux (.deb)**. AppImage/`.rpm` ficam para depois.
+
+> **Ícone do .deb:** o repo só traz `.ico`/`.icns`. O `packageLinux()` usa um
+> PNG **se** existir em `app/static/logos/prod/icon-logo.png` (≥256×256); sem
+> ele, o `.deb` é gerado sem ícone custom (instala e roda igual).
 
 ```
 yarn               # deps
@@ -62,6 +65,9 @@ yarn package       # empacota (macOS/Windows)
 - ✅ **Windows:** build de dev + run validados (todas as features do fork).
 - ⏳ **macOS / Linux:** código é portável, mas **ainda não buildado/rodado** —
   validar com `./run-local.sh` quando houver acesso a cada máquina/VM.
+- ⏳ **Linux `.deb`:** `packageLinux()` **escrito** (electron-installer-debian),
+  mas **não validado** — testar `./build-dist.sh` no Debian Trixie do escritório
+  (precisa `dpkg`/`fakeroot`; o `yarn` instala a dep nova).
 
 ## Troubleshooting
 

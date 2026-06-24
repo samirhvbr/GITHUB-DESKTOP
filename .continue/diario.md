@@ -27,6 +27,11 @@ Log append-only. Uma entrada por sessão, mais recente no topo.
   (dev build + run roda nos 3). **Validado só no Windows ainda.**
 - **Versão do fork → 0.4.0.** Reload da UI (Ctrl+Alt+R) não funciona nesta build;
   fechar/reabrir (`run-local`) é o caminho — fechamentos do operador são intencionais, não crash.
+- **Empacotamento Linux (`.deb`) escrito** (não validado): `packageLinux()` em
+  `script/package.ts` via `electron-installer-debian` (require lazy → tsc não quebra no
+  Windows sem a dep); devDep adicionada; `build-dist.sh` agora roda `yarn package` no Linux;
+  ícone PNG opcional. **Validar amanhã no Debian Trixie do escritório.** Próximo: **Fase 3
+  (push agendado + auto-commit opt-in).**
 
 ---
 

@@ -36,7 +36,8 @@ versão upstream (`app/package.json` = `3.5.13-beta3`).
   tela **Status** (relatório por categoria + última ação + "Copiar"), zebra + X em erro.
   Validado no Windows.
 - ✅ **Multiplataforma:** scripts `run-local.sh` + `build-dist.{sh,ps1,cmd}` + guia
-  [run-mac-linux.md](run-mac-linux.md). Dev roda nos 3; instalador Linux pendente.
+  [run-mac-linux.md](run-mac-linux.md). Dev roda nos 3; instalador Linux `.deb`
+  (`packageLinux()` em `script/package.ts`) escrito — a validar no Debian.
 - ✅ Ambiente de dev rodando no Windows (Node 24, yarn vendorizado; `run-local`).
 - ✅ **Fase 1 (dashboard)** + **Fase 2b (clone em lote)** validadas no app.
 - ✅ **Polimentos do clone em lote** (testados): (1) scroll não volta mais ao topo
@@ -71,7 +72,8 @@ No Linux atual não há Node 24 nem nvm; o app roda de fato no **Windows** — g
       validado no Windows (v0.4.0): seleção, até 3 simultâneos, auto-refresh, tela de
       relatório com "Copiar".
 - [ ] **Validar no Mac e no Linux** com `run-local.sh` (código portável; só falta rodar lá).
-- [ ] **Empacotar instalador no Linux:** portar `script/package.ts` (só darwin/win32 hoje).
+- [~] **Instalador Linux (`.deb`):** `packageLinux()` escrito em `script/package.ts`
+      (electron-installer-debian) — **validar no Debian Trixie** (`./build-dist.sh`).
 - [x] Polimentos do clone em lote (scroll, leveza, pular existentes) — feito.
 - [x] **Select all** no clone em lote — feito.
 - [x] Versionamento do fork (VERSION.md + UI) — feito (v0.3.0).
@@ -80,4 +82,4 @@ No Linux atual não há Node 24 nem nvm; o app roda de fato no **Windows** — g
 - [~] **Multiplataforma** (SAMIR-PROJETO): código é portável; **Windows validado**.
       Launcher `run-local.sh` (Mac/Linux) + guia [run-mac-linux.md](run-mac-linux.md)
       criados. **Falta buildar/rodar no Mac e no Linux.** Empacotamento de produção:
-      macOS/Windows ✅; **Linux ❌** (`script/package.ts` só trata darwin/win32 — portar depois).
+      macOS/Windows ✅; **Linux `.deb`** via `packageLinux()` (escrito, a validar no Debian).

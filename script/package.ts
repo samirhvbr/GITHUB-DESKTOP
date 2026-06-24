@@ -6,6 +6,7 @@ import * as electronInstaller from 'electron-winstaller'
 import { getProductName, getCompanyName } from '../app/package-info'
 import {
   getDistPath,
+  getExecutableName,
   getOSXZipPath,
   getWindowsIdentifierName,
   getWindowsStandaloneName,
@@ -39,6 +40,8 @@ if (process.platform === 'darwin') {
   packageOSX()
 } else if (process.platform === 'win32') {
   packageWindows()
+} else if (process.platform === 'linux') {
+  packageLinux()
 } else {
   console.error(`I don't know how to package for ${process.platform} :(`)
   process.exit(1)
@@ -146,6 +149,51 @@ function packageWindows() {
       }
     })
     .catch(e => {
+      console.error(`Error packaging: ${e}`)
+      process.exit(1)
+    })
+}
+
+function packageLinux() {
+  // The Debian packager is only needed on Linux build hosts. Pull it in lazily
+  // with require() (not import) so the type-check/build on Windows and macOS —
+  // where this dependency isn't installed — doesn't try to resolve it. On Linux
+  // `yarn` installs it (devDependency) and it shells out to dpkg/fakeroot.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const installDebian = require('electron-installer-debian')
+
+  // Debian names the architecture 'amd64'/'arm64'.
+  const arch = getDistArchitecture() === 'arm64' ? 'arm64' : 'amd64'
+
+  // electron-installer-debian wants a PNG icon, but the repo only ships .ico
+  // (Windows) and .icns (macOS). Use a PNG if one is dropped next to them,
+  // otherwise build the package without a custom icon (it still installs/runs).
+  const iconPath = join(getIconDirectory(), 'icon-logo.png')
+  const hasIcon = existsSync(iconPath)
+  if (!hasIcon) {
+    console.warn(
+      `No PNG icon at ${iconPath} — building the .deb without a custom icon. ` +
+        `Drop a 256x256 (or larger) PNG there to brand it.`
+    )
+  }
+
+  const options = {
+    src: distPath, // dist/desktop-linux-<arch>
+    dest: outputDir, // dist/
+    arch,
+    bin: getExecutableName(), // 'desktop'
+    name: 'github-desktop',
+    productName,
+    genericName: productName,
+    section: 'devel',
+    categories: ['GNOME', 'GTK', 'Development', 'RevisionControl'],
+    ...(hasIcon ? { icon: iconPath } : {}),
+  }
+
+  console.log('Packaging for Linux (.deb)…')
+  installDebian(options)
+    .then(() => console.log(`.deb created in ${outputDir}`))
+    .catch((e: unknown) => {
       console.error(`Error packaging: ${e}`)
       process.exit(1)
     })
