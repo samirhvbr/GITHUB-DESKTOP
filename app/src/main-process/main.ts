@@ -289,6 +289,31 @@ async function handleCommandLineArguments(argv: string[]) {
     return
   }
 
+  // On Linux the OS hands protocol urls to us as a plain argument (our
+  // registered .desktop handler launches the app with `Exec=… %u`). As on
+  // Windows, Chromium may inject extra switches, so we scan all args for
+  // something that looks like one of our app urls and forward it to the
+  // running instance.
+  if (__LINUX__) {
+    const prefixes = Array.from(possibleProtocols, p => `${p}://`)
+    const matchingUrl = argv.find(arg => {
+      if (prefixes.some(p => arg.startsWith(p))) {
+        try {
+          new URL(arg)
+          return true
+        } catch (e) {
+          log.error(`Unable to parse argument as URL: ${arg}`)
+        }
+      }
+      return false
+    })
+
+    if (matchingUrl) {
+      handleAppURL(matchingUrl)
+      return
+    }
+  }
+
   if (typeof args['cli-open'] === 'string') {
     handleCLIAction({ kind: 'open-repository', path: args['cli-open'] })
   } else if (typeof args['cli-clone'] === 'string') {
