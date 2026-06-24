@@ -1,2 +1,6 @@
 /app/test/fixtures/** -text
 /app/static/win32/github.sh eol=lf
+
+# Shell scripts must keep LF endings so they run on macOS/Linux even when
+# authored/checked out on Windows.
+*.sh text eol=lf
