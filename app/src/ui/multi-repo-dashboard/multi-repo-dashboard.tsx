@@ -9,6 +9,7 @@ import { showOpenDialog } from '../main-process-proxy'
 import { findGitRepositories } from '../../lib/find-git-repositories'
 import { CloningRepository } from '../../models/cloning-repository'
 import { IAheadBehind } from '../../models/branch'
+import { FetchType } from '../../models/fetch'
 import { Octicon, syncClockwise } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
 import { Button } from '../lib/button'
@@ -635,8 +636,8 @@ export class MultiRepoDashboard extends React.Component<
             // operation silently no-ops — that was the "push fez nada" bug.
             await this.props.dispatcher.refreshRepository(repo)
 
-            const before = this.props.localRepositoryStateLookup.get(repo.id)
-            const ab = before?.aheadBehind ?? null
+            let before = this.props.localRepositoryStateLookup.get(repo.id)
+            let ab = before?.aheadBehind ?? null
 
             // No tracked upstream → nothing to pull/push in batch.
             if (ab === null) {
@@ -668,6 +669,21 @@ export class MultiRepoDashboard extends React.Component<
               })
               done++
             } else {
+              // Pull needs a real fetch first. The `behind` count from local
+              // `git status` is measured against the last-fetched remote-
+              // tracking ref, so a repo that truly has upstream commits reports
+              // behind === 0 and gets wrongly skipped as "já atualizado" — the
+              // bug where a manual `git pull` (git_pull.sh) pulled material the
+              // dashboard had missed. Fetch, re-read the real ahead/behind,
+              // then decide.
+              await this.props.dispatcher.fetch(
+                repo,
+                FetchType.UserInitiatedTask
+              )
+              await this.props.dispatcher.refreshRepository(repo)
+              before = this.props.localRepositoryStateLookup.get(repo.id)
+              ab = before?.aheadBehind ?? ab
+
               if (ab.behind === 0) {
                 this.setOp(repo.id, {
                   kind,

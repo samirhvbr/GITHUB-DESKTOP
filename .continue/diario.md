@@ -4,6 +4,40 @@ Log append-only. Uma entrada por sessão, mais recente no topo.
 
 ---
 
+## 2026-06-25 — Bug do PULL em lote ("git_pull.sh pegava o que o desktop não pegava")
+
+- **Contexto recuperado pós-crash do VSCode** via `.continue/` (sessão anterior não
+  deixou nada no working tree — tudo já estava commitado no HEAD `0.1.0 - Docs`).
+- **Sintoma (operador):** rodar o pull em lote no dashboard reportava vários repos como
+  "já atualizado", mas o `~/x/git/git_pull.sh` (que faz `git pull --ff-only`, ou seja,
+  **fetch** + ff) trazia material novo nesses mesmos repos.
+- **Causa-raiz confirmada no código:** o pull em lote decidia pular com
+  `ab.behind === 0`, e esse `behind` vinha do `git status` **local** — medido contra o
+  ref de rastreamento `origin/<branch>` da **última vez que se fez fetch**. O
+  `dispatcher.refreshRepository` (linha ~637) só faz `loadStatus`/`loadBranches`,
+  **não faz fetch**. Repo com commits novos no remoto, mas sem fetch recente →
+  `behind === 0` → pulado como "já atualizado". O `git pull` manual fazia fetch e por
+  isso enxergava. (Push **não** tem esse bug: `ahead` de commits locais é confiável sem
+  fetch.)
+- **Fix** ([multi-repo-dashboard.tsx](../app/src/ui/multi-repo-dashboard/multi-repo-dashboard.tsx)
+  `runBatch`, ramo `pull`): antes de checar `behind`, faz
+  `dispatcher.fetch(repo, FetchType.UserInitiatedTask)` → `refreshRepository` →
+  relê `aheadBehind` do lookup (agora medido contra o ref recém-buscado) → só então
+  decide "já atualizado" vs. `pull`. `let before/ab` para reler. Import de `FetchType`.
+- **Validação:** `tsc --noEmit` limpo; `eslint` sem regressão (os 3 `jsx-no-bind` do
+  arquivo já existiam no HEAD, em código de render alheio). **✅ Validado ao vivo
+  (2026-06-25)** no Linux (Node 24, `run-local.sh --skip-install --skip-build`):
+  ALLinONE estava 8 commits atrás (`git log HEAD..@{u}` = 8) → Pull em lote no dashboard
+  → depois `HEAD..@{u}` vazio (em dia). O log do app confirma a sequência da correção
+  (`Executing fetch` → `Executing pull --ff` → `getAheadBehind`) e o lote puxou 9+ repos,
+  a maioria sem fetch manual prévio.
+- **Aberto/relacionado:** o **display** das linhas (open/Atualizar via
+  `refreshIndicatorForRepository`) ainda só faz fetch quando `shouldBackgroundFetch`
+  libera (throttle) — pode mostrar "Atualizado" enganoso até o próximo fetch. O **pull**
+  agora está correto de qualquer forma; o display é follow-up menor.
+
+---
+
 ## 2026-06-23 (cont. 5) — Pull/Push em lote + status/relatório + multiplataforma (v0.4.0)
 
 - **PRIORIDADE entregue:** ações em lote no **Painel de repositórios** (estende a Fase 1).
