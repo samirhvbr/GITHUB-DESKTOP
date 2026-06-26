@@ -7,6 +7,7 @@ import type {
   ICopilotResolutionSummary,
 } from './copilot-conflict-resolution'
 import { Account } from '../models/account'
+import { ITelegramSettings } from '../models/telegram'
 import { CommitIdentity } from '../models/commit-identity'
 import { IDiff, ImageDiffType } from '../models/diff'
 import { Repository, ILocalRepositoryState } from '../models/repository'
@@ -385,6 +386,12 @@ export interface IAppState {
    * Whether or not the user enabled high-signal notifications.
    */
   readonly notificationsEnabled: boolean
+
+  /**
+   * Global Telegram reporting settings for scheduled push (fork: multi-repo
+   * dashboard). The raw bot token is never here — only whether one is set.
+   */
+  readonly telegram: ITelegramSettings
 
   /** The users last chosen pull request suggested next action. */
   readonly pullRequestSuggestedNextAction:

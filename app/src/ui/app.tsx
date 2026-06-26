@@ -50,6 +50,7 @@ import { DeleteBranch, DeleteRemoteBranch } from './delete-branch'
 import { CloningRepositoryView } from './cloning-repository'
 import {
   Toolbar,
+  ToolbarButton,
   ToolbarDropdown,
   DropdownState,
   PushPullButton,
@@ -1679,6 +1680,7 @@ export class App extends React.Component<IAppProps, IAppState> {
             useWindowsOpenSSH={this.state.useWindowsOpenSSH}
             showCommitLengthWarning={this.state.showCommitLengthWarning}
             notificationsEnabled={this.state.notificationsEnabled}
+            telegram={this.state.telegram}
             optOutOfUsageTracking={this.state.optOutOfUsageTracking}
             useExternalCredentialHelper={this.state.useExternalCredentialHelper}
             repository={repository}
@@ -3338,6 +3340,28 @@ export class App extends React.Component<IAppProps, IAppState> {
     }
   }
 
+  /**
+   * Top-level toolbar entry to the multi-repo dashboard, to the left of the
+   * current-repository button so it's discoverable without opening the repo
+   * foldout. Fork feature (multi-repo dashboard).
+   */
+  private renderMultiRepoDashboardToolbarButton(): JSX.Element | null {
+    if (this.state.repositories.length === 0) {
+      return null
+    }
+
+    return (
+      <ToolbarButton
+        className="multi-repo-dashboard-button"
+        icon={octicons.listUnordered}
+        title="Painel"
+        description="Repositórios"
+        tooltip="Ver painel com todos os repositórios"
+        onClick={this.onShowMultiRepoDashboard}
+      />
+    )
+  }
+
   private renderRepositoryToolbarButton() {
     const selection = this.state.selectedState
 
@@ -3766,6 +3790,7 @@ export class App extends React.Component<IAppProps, IAppState> {
 
     return (
       <Toolbar id="desktop-app-toolbar">
+        {this.renderMultiRepoDashboardToolbarButton()}
         <div className="sidebar-section" style={{ width }}>
           {this.renderRepositoryToolbarButton()}
         </div>

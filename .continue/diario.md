@@ -4,6 +4,29 @@ Log append-only. Uma entrada por sessão, mais recente no topo.
 
 ---
 
+## 2026-06-25 (cont.) — Fase 3b-A: notificações por Telegram (infra)
+
+- **Decisões do operador:** bot **global** (1 token p/ todos), **2 modos** de
+  reporte (tudo / só branch-nova-por-conflito), construção **faseada** (Telegram
+  primeiro, conflito→branch-nova depois). Design em
+  [fase3b-telegram.md](fase3b-telegram.md).
+- **Fase A implementada:** token do bot no `TokenStore` (cofre seguro, keytar) —
+  nunca em texto puro; `enabled`/`chatId`/`scope` em localStorage. Cliente
+  `lib/telegram.ts` (`sendMessage`, nunca lança). Seção "Telegram" na aba
+  **Preferences → Notifications** (token, chat id, escopo, **Salvar** + **Enviar
+  teste**). `runScheduledPush` virou wrapper que reporta o desfecho ao Telegram
+  por escopo (`computeScheduledPushOutcome` faz o trabalho e devolve
+  `{message, isConflictBranch}`). Falha do Telegram **nunca** quebra o push.
+- 10 arquivos (2 novos): `models/telegram.ts`, `lib/telegram.ts`,
+  `app-store.ts`, `app-state.ts`, `dispatcher.ts`, `notifications.tsx`,
+  `preferences.tsx`, `app.tsx`.
+- **Validação:** `tsc` + `eslint` limpos; dev-server `compiled successfully`.
+  Ao vivo pendente (ver doc). **Modo `conflict-only` não dispara até a Fase B.**
+- **Fase B (próxima):** detectar push rejeitado (non-fast-forward) → criar
+  `auto/<branch>-<datahora>`, push nela, reportar (atrás de opt-in).
+
+---
+
 ## 2026-06-25 — Bug do PULL em lote ("git_pull.sh pegava o que o desktop não pegava")
 
 - **Contexto recuperado pós-crash do VSCode** via `.continue/` (sessão anterior não

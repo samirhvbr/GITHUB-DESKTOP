@@ -1,6 +1,10 @@
 import * as React from 'react'
 import { Account, isDotComAccount } from '../../models/account'
 import { PreferencesTab } from '../../models/preferences'
+import {
+  ITelegramSettings,
+  TelegramNotificationScope,
+} from '../../models/telegram'
 import { Dispatcher } from '../dispatcher'
 import { TabBar, TabBarType } from '../tab-bar'
 import { Accounts } from './accounts'
@@ -88,6 +92,7 @@ interface IPreferencesProps {
   readonly useWindowsOpenSSH: boolean
   readonly showCommitLengthWarning: boolean
   readonly notificationsEnabled: boolean
+  readonly telegram: ITelegramSettings
   readonly optOutOfUsageTracking: boolean
   readonly useExternalCredentialHelper: boolean
   readonly initialSelectedTab?: PreferencesTab
@@ -634,6 +639,10 @@ export class Preferences extends React.Component<
           <Notifications
             notificationsEnabled={this.state.notificationsEnabled}
             onNotificationsEnabledChanged={this.onNotificationsEnabledChanged}
+            telegram={this.props.telegram}
+            onTelegramSettingsChanged={this.onTelegramSettingsChanged}
+            onTelegramBotTokenChanged={this.onTelegramBotTokenChanged}
+            onTestTelegramMessage={this.onTestTelegramMessage}
           />
         )
         break
@@ -758,6 +767,22 @@ export class Preferences extends React.Component<
 
   private onNotificationsEnabledChanged = (notificationsEnabled: boolean) => {
     this.setState({ notificationsEnabled })
+  }
+
+  private onTelegramSettingsChanged = (settings: {
+    enabled: boolean
+    chatId: string
+    scope: TelegramNotificationScope
+  }) => {
+    this.props.dispatcher.setTelegramSettings(settings)
+  }
+
+  private onTelegramBotTokenChanged = (token: string) => {
+    return this.props.dispatcher.setTelegramBotToken(token)
+  }
+
+  private onTestTelegramMessage = () => {
+    return this.props.dispatcher.testTelegramMessage()
   }
 
   private onOptOutofReportingChanged = (value: boolean) => {

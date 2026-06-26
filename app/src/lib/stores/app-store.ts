@@ -275,6 +275,12 @@ import {
   setObject,
   getFloatNumber,
 } from '../local-storage'
+import { TokenStore } from './token-store'
+import { sendTelegramMessage } from '../telegram'
+import {
+  TelegramNotificationScope,
+  parseTelegramScope,
+} from '../../models/telegram'
 import { ExternalEditorError, suggestedExternalEditor } from '../editors/shared'
 import { ApiRepositoriesStore } from './api-repositories-store'
 import {
@@ -508,6 +514,12 @@ const shellKey = 'shell'
 
 const repositoryIndicatorsEnabledKey = 'enable-repository-indicators'
 
+/** localStorage key for the non-secret Telegram settings (enabled/chat/scope). */
+const telegramSettingsKey = 'telegram-settings'
+/** Secure token store coordinates for the Telegram bot token (the secret). */
+const TelegramTokenStoreKey = 'telegram'
+const TelegramTokenStoreLogin = 'bot-token'
+
 // background fetching should occur hourly when Desktop is active, but this
 // lower interval ensures user interactions like switching repositories and
 // switching between apps does not result in excessive fetching in the app
@@ -697,6 +709,14 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
   private repositoryIndicatorsEnabled: boolean
 
+  /** Global Telegram reporting settings (fork: scheduled-push notifications). */
+  private telegramEnabled: boolean = false
+  private telegramChatId: string = ''
+  private telegramScope: TelegramNotificationScope =
+    TelegramNotificationScope.All
+  /** Whether a bot token is stored (loaded async from the secure store). */
+  private telegramHasToken: boolean = false
+
   /** Which step the user needs to complete next in the onboarding tutorial */
   private currentOnboardingTutorialStep = TutorialStep.NotApplicable
   private readonly tutorialAssessor: OnboardingTutorialAssessor
@@ -803,6 +823,8 @@ export class AppStore extends TypedBaseStore<IAppState> {
 
     this.repositoryIndicatorsEnabled =
       getBoolean(repositoryIndicatorsEnabledKey) ?? true
+
+    this.loadTelegramSettings()
 
     this.repositoryIndicatorUpdater = new RepositoryIndicatorUpdater(
       this.getRepositoriesForIndicatorRefresh,
@@ -1272,6 +1294,12 @@ export class AppStore extends TypedBaseStore<IAppState> {
       optOutOfUsageTracking: this.statsStore.getOptOut(),
       currentOnboardingTutorialStep: this.currentOnboardingTutorialStep,
       repositoryIndicatorsEnabled: this.repositoryIndicatorsEnabled,
+      telegram: {
+        enabled: this.telegramEnabled,
+        chatId: this.telegramChatId,
+        scope: this.telegramScope,
+        hasToken: this.telegramHasToken,
+      },
       commitSpellcheckEnabled: this.commitSpellcheckEnabled,
       currentDragElement: this.currentDragElement,
       lastThankYou: this.lastThankYou,
@@ -4180,6 +4208,127 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public _setMultiRepoDashboardVisible(visible: boolean) {
     this.multiRepoDashboardVisible = visible
     this.emitUpdate()
+  }
+
+  /** Load the non-secret Telegram settings synchronously; token presence async. */
+  private loadTelegramSettings() {
+    const stored = getObject<{
+      enabled?: boolean
+      chatId?: string
+      scope?: string
+    }>(telegramSettingsKey)
+    this.telegramEnabled = stored?.enabled ?? false
+    this.telegramChatId = stored?.chatId ?? ''
+    this.telegramScope = parseTelegramScope(stored?.scope ?? null)
+    this.refreshTelegramTokenPresence()
+  }
+
+  /** Reflect whether a bot token exists in the secure store (async). */
+  private async refreshTelegramTokenPresence() {
+    try {
+      const token = await TokenStore.getItem(
+        TelegramTokenStoreKey,
+        TelegramTokenStoreLogin
+      )
+      const hasToken = token !== null && token.length > 0
+      if (hasToken !== this.telegramHasToken) {
+        this.telegramHasToken = hasToken
+        this.emitUpdate()
+      }
+    } catch (e) {
+      log.error('[Telegram] falha ao ler presença do token', e)
+    }
+  }
+
+  /** Persist the non-secret Telegram settings (enabled/chat/scope). */
+  public _setTelegramSettings(settings: {
+    enabled: boolean
+    chatId: string
+    scope: TelegramNotificationScope
+  }) {
+    this.telegramEnabled = settings.enabled
+    this.telegramChatId = settings.chatId.trim()
+    this.telegramScope = settings.scope
+    setObject(telegramSettingsKey, {
+      enabled: this.telegramEnabled,
+      chatId: this.telegramChatId,
+      scope: this.telegramScope,
+    })
+    this.emitUpdate()
+  }
+
+  /** Store (or clear, when blank) the Telegram bot token in the secure store. */
+  public async _setTelegramBotToken(token: string): Promise<void> {
+    const trimmed = token.trim()
+    if (trimmed.length === 0) {
+      await TokenStore.deleteItem(TelegramTokenStoreKey, TelegramTokenStoreLogin)
+      this.telegramHasToken = false
+    } else {
+      await TokenStore.setItem(
+        TelegramTokenStoreKey,
+        TelegramTokenStoreLogin,
+        trimmed
+      )
+      this.telegramHasToken = true
+    }
+    this.emitUpdate()
+  }
+
+  /** Send a test Telegram message; returns a short human-readable result. */
+  public async _testTelegramMessage(): Promise<string> {
+    const token = await TokenStore.getItem(
+      TelegramTokenStoreKey,
+      TelegramTokenStoreLogin
+    )
+    if (token === null || token.length === 0) {
+      return 'Sem token do bot configurado.'
+    }
+    const result = await sendTelegramMessage(
+      token,
+      this.telegramChatId,
+      '✅ GitHub Desktop (fork multi-repo): teste de notificação do Telegram.'
+    )
+    return result.ok
+      ? 'Mensagem de teste enviada.'
+      : `Falhou: ${result.error ?? 'erro desconhecido'}`
+  }
+
+  /**
+   * Report a scheduled-push outcome to Telegram, honoring the configured scope.
+   * Never throws — a Telegram failure must not break the push flow.
+   */
+  private async reportScheduledPushToTelegram(
+    message: string,
+    isConflictBranch: boolean
+  ): Promise<void> {
+    if (!this.telegramEnabled) {
+      return
+    }
+    if (
+      this.telegramScope === TelegramNotificationScope.ConflictBranchOnly &&
+      !isConflictBranch
+    ) {
+      return
+    }
+    try {
+      const token = await TokenStore.getItem(
+        TelegramTokenStoreKey,
+        TelegramTokenStoreLogin
+      )
+      if (token === null || token.length === 0) {
+        return
+      }
+      const result = await sendTelegramMessage(
+        token,
+        this.telegramChatId,
+        message
+      )
+      if (!result.ok) {
+        log.error(`[Telegram] envio falhou: ${result.error ?? 'desconhecido'}`)
+      }
+    } catch (e) {
+      log.error('[Telegram] erro ao reportar push agendado', e)
+    }
   }
 
   public _setNotificationsEnabled(notificationsEnabled: boolean) {
@@ -7945,18 +8094,39 @@ export class AppStore extends TypedBaseStore<IAppState> {
   }
 
   /**
-   * Core scheduled-push flow: refresh, optionally auto-commit pending changes,
-   * then push — only when it's safe (remote present, valid tip, tracked upstream
-   * with commits ahead). Never force-pushes, never opens a popup. Returns a
-   * short status string for diagnostics and UI feedback.
-   *
-   * Fork feature (multi-repo dashboard — scheduled push).
+   * Scheduled-push entry point: runs the flow and reports the outcome to
+   * Telegram (by configured scope). Returns the status message for diagnostics
+   * and UI feedback. Fork feature (multi-repo dashboard — scheduled push).
    */
   private async runScheduledPush(
     repository: Repository,
     autoCommit: boolean,
     commitMessage: string | undefined
   ): Promise<string> {
+    const outcome = await this.computeScheduledPushOutcome(
+      repository,
+      autoCommit,
+      commitMessage
+    )
+    await this.reportScheduledPushToTelegram(
+      outcome.message,
+      outcome.isConflictBranch
+    )
+    return outcome.message
+  }
+
+  /**
+   * Core scheduled-push flow: refresh, optionally auto-commit pending changes,
+   * then push — only when it's safe (remote present, valid tip, tracked upstream
+   * with commits ahead). Never force-pushes, never opens a popup. Returns a
+   * short status message plus whether a new branch was created on conflict
+   * (Phase B; always false today).
+   */
+  private async computeScheduledPushOutcome(
+    repository: Repository,
+    autoCommit: boolean,
+    commitMessage: string | undefined
+  ): Promise<{ message: string; isConflictBranch: boolean }> {
     // Refresh so we act on the current status / branch / remote.
     await this._refreshRepository(repository)
     let state = this.repositoryStateCache.get(repository)
@@ -7981,23 +8151,23 @@ export class AppStore extends TypedBaseStore<IAppState> {
     if (state.remote === null) {
       const msg = `${repository.name}: sem remote configurado`
       log.info(`[AutoPush] ${msg}`)
-      return msg
+      return { message: msg, isConflictBranch: false }
     }
     if (state.branchesState.tip.kind !== TipState.Valid) {
       const msg = `${repository.name}: branch sem tip válido (unborn/detached)`
       log.info(`[AutoPush] ${msg}`)
-      return msg
+      return { message: msg, isConflictBranch: false }
     }
     const aheadBehind = state.aheadBehind
     if (aheadBehind === null) {
       const msg = `${repository.name}: sem upstream rastreado`
       log.info(`[AutoPush] ${msg}`)
-      return msg
+      return { message: msg, isConflictBranch: false }
     }
     if (aheadBehind.ahead <= 0) {
       const msg = `${repository.name}: nada a enviar (0 à frente)`
       log.info(`[AutoPush] ${msg}`)
-      return msg
+      return { message: msg, isConflictBranch: false }
     }
 
     log.info(
@@ -8009,7 +8179,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       committed ? ' (com auto-commit)' : ''
     }`
     log.info(`[AutoPush] ${msg}`)
-    return msg
+    return { message: msg, isConflictBranch: false }
   }
 
   /**

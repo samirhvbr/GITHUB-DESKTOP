@@ -59,6 +59,7 @@ import { RepositoryStateCache } from '../../lib/stores/repository-state-cache'
 import { getTipSha } from '../../lib/tip'
 
 import { Account } from '../../models/account'
+import { TelegramNotificationScope } from '../../models/telegram'
 import { AppMenu, ExecutableMenuItem } from '../../models/app-menu'
 import { Author, UnknownAuthor } from '../../models/author'
 import { Branch, IAheadBehind } from '../../models/branch'
@@ -2944,6 +2945,25 @@ export class Dispatcher {
 
   public setNotificationsEnabled(notificationsEnabled: boolean) {
     this.appStore._setNotificationsEnabled(notificationsEnabled)
+  }
+
+  /** Persist the non-secret Telegram settings (enabled/chat/scope). */
+  public setTelegramSettings(settings: {
+    enabled: boolean
+    chatId: string
+    scope: TelegramNotificationScope
+  }) {
+    this.appStore._setTelegramSettings(settings)
+  }
+
+  /** Store, or clear when blank, the Telegram bot token (secure store). */
+  public setTelegramBotToken(token: string): Promise<void> {
+    return this.appStore._setTelegramBotToken(token)
+  }
+
+  /** Send a test Telegram message; resolves to a human-readable result. */
+  public testTelegramMessage(): Promise<string> {
+    return this.appStore._testTelegramMessage()
   }
 
   private logHowToRevertCherryPick(

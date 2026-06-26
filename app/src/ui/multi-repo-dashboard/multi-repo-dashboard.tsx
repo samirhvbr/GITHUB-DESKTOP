@@ -4,7 +4,12 @@ import pLimit from 'p-limit'
 
 import { UiView } from '../ui-view'
 import { Repository, ILocalRepositoryState } from '../../models/repository'
-import { getAutoPushPreferences } from '../../models/workflow-preferences'
+import {
+  getAutoPushPreferences,
+  DefaultAutoPushIntervalMinutes,
+  MinAutoPushIntervalMinutes,
+  DefaultAutoCommitMessage,
+} from '../../models/workflow-preferences'
 import { showOpenDialog } from '../main-process-proxy'
 import { findGitRepositories } from '../../lib/find-git-repositories'
 import { CloningRepository } from '../../models/cloning-repository'
@@ -14,6 +19,9 @@ import { Octicon, syncClockwise } from '../octicons'
 import * as octicons from '../octicons/octicons.generated'
 import { Button } from '../lib/button'
 import { Checkbox, CheckboxValue } from '../lib/checkbox'
+import { TextBox } from '../lib/text-box'
+import { Dialog, DialogContent, DialogFooter } from '../dialog'
+import { OkCancelButtonGroup } from '../dialog/ok-cancel-button-group'
 import { TooltippedContent } from '../lib/tooltipped-content'
 import { Dispatcher } from '../dispatcher'
 
@@ -267,6 +275,15 @@ interface IMultiRepoDashboardState {
 
   /** Chaves (pasta-mãe) dos grupos recolhidos. */
   readonly collapsedGroups: ReadonlySet<string>
+
+  /** Mostra o diálogo de configuração de auto-push em lote. */
+  readonly autoPushConfigOpen: boolean
+  /** Intervalo (texto editável) do diálogo de auto-push em lote. */
+  readonly autoPushConfigInterval: string
+  /** Auto-commit ligado no diálogo de auto-push em lote. */
+  readonly autoPushConfigAutoCommit: boolean
+  /** Mensagem de commit do diálogo de auto-push em lote (vazio = padrão). */
+  readonly autoPushConfigMessage: string
 }
 
 /**
@@ -295,6 +312,10 @@ export class MultiRepoDashboard extends React.Component<
       addFolderSelected: new Set<string>(),
       addFolderAdding: false,
       collapsedGroups: new Set<string>(),
+      autoPushConfigOpen: false,
+      autoPushConfigInterval: String(DefaultAutoPushIntervalMinutes),
+      autoPushConfigAutoCommit: true,
+      autoPushConfigMessage: '',
     }
   }
 
@@ -545,6 +566,125 @@ export class MultiRepoDashboard extends React.Component<
       notice: `Push automático ${enable ? 'ligado' : 'desligado'} em ${
         selected.length
       } repo(s).`,
+    })
+  }
+
+  /**
+   * Run the scheduled-push flow *now* for the selected repositories (the same
+   * flow the timer runs: refresh → optional auto-commit → guarded push). Mirrors
+   * the per-repo "Testar agora" of Repository Settings, but for whatever is
+   * selected here — so the user tests the repo they picked in the dashboard, not
+   * the current repository.
+   */
+  private onTestAutoPushSelected = async () => {
+    if (this.state.isRunning) {
+      return
+    }
+    const selected = this.getRows().filter(r =>
+      this.state.selectedRepoIds.has(r.repository.id)
+    )
+    if (selected.length === 0) {
+      this.setState({ notice: 'Selecione ao menos um repositório.' })
+      return
+    }
+
+    this.setState({ isRunning: true, ops: new Map(), notice: null })
+
+    const results = new Array<string>()
+    const limit = pLimit(MaxConcurrentSyncs)
+
+    await Promise.all(
+      selected.map(row =>
+        limit(async () => {
+          const repo = row.repository
+          this.setOp(repo.id, { kind: 'push', status: 'running' })
+          try {
+            const prefs = getAutoPushPreferences(repo.workflowPreferences)
+            const message = await this.props.dispatcher.runScheduledPushNow(
+              repo,
+              prefs.autoCommit,
+              prefs.commitMessage
+            )
+            this.setOp(repo.id, { kind: 'push', status: 'done', message })
+            results.push(message)
+            await this.props.dispatcher.refreshRepositoryIndicator(repo)
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e)
+            log.error(
+              `[MultiRepoDashboard] test auto-push failed for '${repo.name}'`,
+              e
+            )
+            this.setOp(repo.id, { kind: 'push', status: 'error', message })
+            results.push(`${repo.name}: erro — ${message}`)
+          }
+        })
+      )
+    )
+
+    this.setState({ isRunning: false, notice: results.join(' · ') })
+  }
+
+  private onOpenAutoPushConfig = () => {
+    if (this.state.isRunning || this.state.selectedRepoIds.size === 0) {
+      return
+    }
+    this.setState({
+      autoPushConfigOpen: true,
+      autoPushConfigInterval: String(DefaultAutoPushIntervalMinutes),
+      autoPushConfigAutoCommit: true,
+      autoPushConfigMessage: '',
+    })
+  }
+
+  private onCloseAutoPushConfig = () => {
+    this.setState({ autoPushConfigOpen: false })
+  }
+
+  private onAutoPushConfigIntervalChanged = (value: string) => {
+    this.setState({ autoPushConfigInterval: value })
+  }
+
+  private onAutoPushConfigAutoCommitChanged = (
+    event: React.FormEvent<HTMLInputElement>
+  ) => {
+    this.setState({ autoPushConfigAutoCommit: event.currentTarget.checked })
+  }
+
+  private onAutoPushConfigMessageChanged = (value: string) => {
+    this.setState({ autoPushConfigMessage: value })
+  }
+
+  /** Apply the batch dialog's settings to every selected repo, enabling them. */
+  private onApplyAutoPushConfig = () => {
+    const selected = this.getRows().filter(r =>
+      this.state.selectedRepoIds.has(r.repository.id)
+    )
+    const parsed = parseInt(this.state.autoPushConfigInterval, 10)
+    const intervalMinutes = Math.max(
+      MinAutoPushIntervalMinutes,
+      Number.isFinite(parsed) ? parsed : DefaultAutoPushIntervalMinutes
+    )
+    const message = this.state.autoPushConfigMessage.trim()
+
+    for (const row of selected) {
+      this.props.dispatcher
+        .updateRepositoryWorkflowPreferences(row.repository, {
+          ...row.repository.workflowPreferences,
+          autoPush: {
+            enabled: true,
+            intervalMinutes,
+            autoCommit: this.state.autoPushConfigAutoCommit,
+            commitMessage: message.length > 0 ? message : undefined,
+          },
+        })
+        .catch(e =>
+          log.error('[MultiRepoDashboard] apply auto-push config failed', e)
+        )
+    }
+
+    this.setState({
+      autoPushConfigOpen: false,
+      notice: `Push automático configurado em ${selected.length} repo(s).`,
     })
   }
 
@@ -1169,15 +1309,29 @@ export class MultiRepoDashboard extends React.Component<
                     <Octicon symbol={octicons.arrowUp} />
                     Push{countLabel}
                   </Button>
+                  {selectedAllAutoPush ? (
+                    <Button
+                      onClick={this.onToggleAutoPushSelected}
+                      disabled={actionDisabled}
+                    >
+                      <Octicon symbol={syncClockwise} />
+                      Desligar auto-push{countLabel}
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={this.onOpenAutoPushConfig}
+                      disabled={actionDisabled}
+                    >
+                      <Octicon symbol={octicons.gear} />
+                      Configurar auto-push{countLabel}
+                    </Button>
+                  )}
                   <Button
-                    onClick={this.onToggleAutoPushSelected}
+                    onClick={this.onTestAutoPushSelected}
                     disabled={actionDisabled}
                   >
-                    <Octicon symbol={syncClockwise} />
-                    {selectedAllAutoPush
-                      ? 'Desligar auto-push'
-                      : 'Ligar auto-push'}
-                    {countLabel}
+                    <Octicon symbol={octicons.play} />
+                    Testar auto-push{countLabel}
                   </Button>
                   <Button onClick={this.onShowReport} disabled={isRunning}>
                     <Octicon symbol={octicons.listUnordered} />
@@ -1207,7 +1361,56 @@ export class MultiRepoDashboard extends React.Component<
             </div>
           </>
         )}
+        {this.state.autoPushConfigOpen && this.renderAutoPushConfigDialog()}
       </UiView>
+    )
+  }
+
+  /** Batch auto-push configuration dialog (applies to the selected repos). */
+  private renderAutoPushConfigDialog() {
+    const count = this.state.selectedRepoIds.size
+    const autoCommit = this.state.autoPushConfigAutoCommit
+    return (
+      <Dialog
+        id="multi-repo-auto-push-config"
+        title="Configurar push automático"
+        onSubmit={this.onApplyAutoPushConfig}
+        onDismissed={this.onCloseAutoPushConfig}
+      >
+        <DialogContent>
+          <p>
+            Liga o push automático em <strong>{count}</strong> repositório(s)
+            selecionado(s), com estas configurações.
+          </p>
+          <TextBox
+            label="Intervalo (minutos)"
+            value={this.state.autoPushConfigInterval}
+            onValueChanged={this.onAutoPushConfigIntervalChanged}
+          />
+          <Checkbox
+            label="Auto-commit das alterações pendentes antes do push"
+            value={autoCommit ? CheckboxValue.On : CheckboxValue.Off}
+            onChange={this.onAutoPushConfigAutoCommitChanged}
+          />
+          <TextBox
+            label="Mensagem do commit automático"
+            placeholder={DefaultAutoCommitMessage}
+            value={this.state.autoPushConfigMessage}
+            onValueChanged={this.onAutoPushConfigMessageChanged}
+            disabled={!autoCommit}
+          />
+          <p className="auto-push-description">
+            Intervalo mínimo de {MinAutoPushIntervalMinutes} min. Nunca faz
+            force-push; só empurra quando há commits à frente do upstream.
+          </p>
+        </DialogContent>
+        <DialogFooter>
+          <OkCancelButtonGroup
+            okButtonText={`Aplicar a ${count} repo(s)`}
+            cancelButtonText="Cancelar"
+          />
+        </DialogFooter>
+      </Dialog>
     )
   }
 }

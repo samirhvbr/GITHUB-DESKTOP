@@ -61,6 +61,13 @@
         width: 100%;
       }
     }
+    // Fork: the multi-repo dashboard entry sizes to its own label and never
+    // grows into the toolbar — the repository / branch / sync buttons take the
+    // remaining flexible space.
+    &.multi-repo-dashboard-button {
+      flex: 0 0 auto;
+      width: auto;
+    }
     &.toolbar-dropdown-arrow-button {
       width: 39px;
       &.resizable {
