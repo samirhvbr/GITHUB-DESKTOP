@@ -4,6 +4,44 @@ Log append-only. Uma entrada por sessão, mais recente no topo.
 
 ---
 
+## 2026-06-28 — Validação ao vivo: auto-push OK, bug dos 2 clones, doc do build macOS
+
+- **App rodado ao vivo no Windows** (`build:dev` + `yarn start`, janela "GitHub
+  Desktop-dev" no ar). Montado harness seguro em `C:\Users\Samir\autopush-test`
+  (remote **bare** local + clone `work` ahead, sem GitHub, zero risco) pra testar
+  push/auto-commit.
+- **Push agendado (Fase 3): lógica CORRETA.** Revisão de código:
+  `_commitIncludedChanges` retorna boolean ✓, guardas (remote/tip/ahead>0) ✓,
+  nunca force ✓, `_push` empurra o branch inteiro ✓. O "Testar agora"
+  (`_runScheduledPushNow`) roda o fluxo na hora, sem esperar o timer.
+- **🔑 Bug-raiz descoberto: há DOIS clones do GITHUB_DESKTOP.** O **app observa**
+  `C:\Users\Samir\Documents\GitHub\GITHUB_DESKTOP` (clone em lote, branch
+  `development`, **0 ahead**); o operador **commita** em
+  `C:\Users\Samir\x\GITHUB_DESKTOP` (`multi-repo-dashboard`, ahead). Por isso o
+  "Testar agora" no GITHUB_DESKTOP deu **"nada a enviar (0 à frente)"** e o status
+  parece "sempre OK". **Não é bug do auto-push** — é confusão de clone. Explica
+  também a queixa antiga *"mudo arquivo e status fica OK"* e *"push do app não
+  subiu meus commits"* (operador empurra num clone, app vigia o outro).
+- **Telegram (Fase 3b-A):** infra pronta; **teste ao vivo pendente** — falta
+  criar bot no @BotFather + descobrir chat_id. Combinado: escopo **"all"**,
+  "Enviar teste" → "Testar agora" no repo `work` (espera "work: N commit(s)
+  enviado(s)"). `conflict-only` só dispara na Fase B (não existe ainda).
+- **Build macOS documentado** em [MACOS_BUILD.md](MACOS_BUILD.md): `build-dist.sh`
+  **não puxa tokens** (≠ shvterm); assina (Developer ID do keychain) mas **não
+  notariza** sem `APPLE_ID`/`APPLE_ID_PASSWORD`/`APPLE_TEAM_ID` no ambiente →
+  vai pro lixo no Mac alheio. Nome `APPLE_PASSWORD`→**`APPLE_ID_PASSWORD`** difere
+  do shvterm.
+- **Pendências:** (1) testar Telegram ao vivo; (2) ver o push agendado empurrar de
+  verdade no repo `work`; (3) portar pros `build-dist` a trava de **git-sync antes
+  de buildar** + o **bloco de credenciais/guarda macOS** do shvterm (decisão A/B
+  em aberto — recomendado **B + credenciais mac**).
+- ⚠️ **Operacional:** o desktop está apontado pro clone de `Documents\GitHub`
+  (`development`). Pra um push pelo desktop incluir o trabalho de
+  `x\GITHUB_DESKTOP`, **apontar o app pra esta pasta** (senão empurra o clone
+  errado — o tal bug).
+
+---
+
 ## 2026-06-25 (cont.) — Fase 3b-A: notificações por Telegram (infra)
 
 - **Decisões do operador:** bot **global** (1 token p/ todos), **2 modos** de
