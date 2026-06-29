@@ -7,7 +7,6 @@ import { Repository, ILocalRepositoryState } from '../../models/repository'
 import {
   AutoPushScheduleMode,
   getAutoPushPreferences,
-  getAutoPullPreferences,
   parseDailyTime,
   DefaultAutoPushIntervalMinutes,
   MinAutoPushIntervalMinutes,
@@ -763,7 +762,9 @@ export class MultiRepoDashboard extends React.Component<
           const repo = row.repository
           this.setOp(repo.id, { kind: 'pull', status: 'running' })
           try {
-            const message = await this.props.dispatcher.runScheduledPullNow(repo)
+            const message = await this.props.dispatcher.runScheduledPullNow(
+              repo
+            )
             this.setOp(repo.id, { kind: 'pull', status: 'done', message })
             results.push(message)
             await this.props.dispatcher.refreshRepositoryIndicator(repo)
@@ -1224,9 +1225,7 @@ export class MultiRepoDashboard extends React.Component<
   }
 
   /** Repos grouped by what they need, for the status report. */
-  private getStatusSections(
-    rows: ReadonlyArray<IDashboardRow>
-  ): ReadonlyArray<{
+  private getStatusSections(rows: ReadonlyArray<IDashboardRow>): ReadonlyArray<{
     readonly title: string
     readonly items: ReadonlyArray<string>
   }> {

@@ -63,7 +63,9 @@ export class AutoPullSettings extends React.Component<
           value={mode}
           onChange={this.onModeChanged}
         >
-          <option value={AutoPushScheduleMode.Interval}>A cada X minutos</option>
+          <option value={AutoPushScheduleMode.Interval}>
+            A cada X minutos
+          </option>
           <option value={AutoPushScheduleMode.Daily}>
             Todo dia em um horário fixo
           </option>
