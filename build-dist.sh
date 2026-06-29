@@ -3,35 +3,51 @@
 # build-dist.sh — build de PRODUÇÃO do fork (macOS/Linux). É o par do
 # build-dist.ps1/.cmd (Windows).
 #
-#   yarn build:prod  → compila produção e gera o app empacotável em dist/ (os 3 SOs)
+#   yarn build:prod  → compila produção e gera o app empacotável em dist/
 #   yarn package     → gera o instalador do SO atual:
-#                      macOS  → .app zipado | Windows → Squirrel (.exe/.msi/.nupkg)
+#                      macOS  → .zip do .app (auto-update) + .dmg (distribuição)
+#                      Windows → Squirrel (.exe/.msi/.nupkg)
 #                      Linux  → .deb + .rpm + AppImage (best-effort)
 #
 # Cada SO buildа no próprio SO (Electron não faz cross-build).
 #
+# macOS — assinatura & notarização (pra NÃO ir pro lixo do Gatekeeper):
+#   o script carrega as credenciais SOZINHO de ~/.config/sshvterm/build.env (mesmo
+#   arquivo do shvterm; aponte outro com $SSHVTERM_BUILD_ENV) e mapeia
+#   APPLE_PASSWORD → APPLE_ID_PASSWORD (o nome que o GitHub Desktop espera). O
+#   certificado Developer ID vem do keychain (auto-descoberto pelo build:prod).
+#   Sem as credenciais o build ABORTA (sairia ad-hoc = "danificado" pra quem
+#   baixa); use --allow-adhoc p/ um build de TESTE local não-distribuível. No
+#   fim faz staple do ticket e confere com spctl + stapler. Detalhes:
+#   .continue/MACOS_BUILD.md.
+#
 # USO (na raiz do repo):
-#   ./build-dist.sh                 # yarn + build:prod (+ package no macOS)
+#   ./build-dist.sh                 # yarn + build:prod + package
 #   ./build-dist.sh --skip-install  # pula 'yarn'
+#   ./build-dist.sh --allow-adhoc   # macOS: build AD-HOC de teste (NÃO distribuível)
 #
 set -euo pipefail
 
 SKIP_INSTALL=0
+ALLOW_ADHOC=0
 for arg in "$@"; do
   case "$arg" in
     --skip-install) SKIP_INSTALL=1 ;;
+    --allow-adhoc) ALLOW_ADHOC=1 ;;
     -h | --help)
       sed -n '2,/^set -euo/p' "$0" | sed 's/^#\{0,1\} \{0,1\}//; $d'
       exit 0
       ;;
     *)
-      echo "Argumento desconhecido: $arg (use --skip-install)" >&2
+      echo "Argumento desconhecido: $arg (use --skip-install / --allow-adhoc)" >&2
       exit 2
       ;;
   esac
 done
 
 cd "$(cd "$(dirname "$0")" && pwd)"
+
+OS="$(uname -s)"
 
 echo "==> verificando pré-requisitos (node, yarn)..."
 if ! command -v node >/dev/null 2>&1; then
@@ -50,6 +66,57 @@ if ! command -v yarn >/dev/null 2>&1; then
 fi
 echo "    yarn OK"
 
+# ── macOS: credenciais de assinatura/notarização (anti-"vai pro lixo") ──────────
+# build:prod assina (Developer ID do keychain) e — se estas variáveis estiverem no
+# ambiente — notariza. Sem notarizar, o app é barrado no Mac de quem baixa. Em vez
+# de exigir `source ...` manual, carregamos o mesmo build.env do shvterm e mapeamos
+# o nome da senha. Detalhes: .continue/MACOS_BUILD.md.
+MAC_SIGNED=0
+if [ "$OS" = "Darwin" ]; then
+  CREDS_FILE="${SSHVTERM_BUILD_ENV:-$HOME/.config/sshvterm/build.env}"
+  if [ -f "$CREDS_FILE" ]; then
+    echo "==> macOS: carregando credenciais de $CREDS_FILE"
+    # shellcheck disable=SC1090
+    if ! . "$CREDS_FILE"; then
+      echo "❌ falha ao ler $CREDS_FILE — confira aspas/sintaxe (export VAR=\"...\")." >&2
+      exit 1
+    fi
+  else
+    echo "⚠️  macOS: $CREDS_FILE não encontrado (a notarização precisa dele)." >&2
+  fi
+
+  # shvterm chama a senha app-specific de APPLE_PASSWORD; o GitHub Desktop quer
+  # APPLE_ID_PASSWORD. Mapeia sem sobrescrever um valor já setado.
+  export APPLE_ID_PASSWORD="${APPLE_ID_PASSWORD:-${APPLE_PASSWORD:-}}"
+
+  # Guarda anti-ad-hoc: precisa das 3 variáveis de notarização + uma identidade
+  # "Developer ID Application" no keychain. A identidade é capturada numa variável
+  # ANTES do grep (um `security ... | grep -q` sob pipefail pode dar falso negativo
+  # por SIGPIPE quando o grep fecha o pipe no match — vide MACOS_BUILD.md).
+  missing=
+  for v in APPLE_ID APPLE_ID_PASSWORD APPLE_TEAM_ID; do
+    [ -n "${!v:-}" ] || missing="$missing $v"
+  done
+  ids="$(security find-identity -v -p codesigning 2>/dev/null || true)"
+  if ! grep -q 'Developer ID Application' <<<"$ids"; then
+    missing="$missing Developer-ID-ausente-no-keychain"
+  fi
+
+  if [ -z "$missing" ]; then
+    MAC_SIGNED=1
+    echo "    ✓ macOS: assino (Developer ID do keychain) + notarizo"
+  elif [ "$ALLOW_ADHOC" = 1 ]; then
+    echo "⚠️  --allow-adhoc: build AD-HOC (roda nesta máquina, NÃO distribuir)." >&2
+    echo "    faltando:${missing}" >&2
+  else
+    echo "❌ macOS: faltam credenciais p/ notarizar — NÃO vou buildar (sairia ad-hoc =" >&2
+    echo "   \"danificado\" pra quem baixar). faltando:${missing}" >&2
+    echo "   Preencha $CREDS_FILE (mesmo do shvterm) ou rode --allow-adhoc p/ teste." >&2
+    echo "   Detalhes: .continue/MACOS_BUILD.md." >&2
+    exit 1
+  fi
+fi
+
 if [ "$SKIP_INSTALL" -eq 0 ]; then
   echo "==> [1/3] yarn (instala deps + baixa o Electron)..."
   yarn
@@ -57,15 +124,47 @@ else
   echo "==> [1/3] yarn install PULADO (--skip-install)"
 fi
 
-echo "==> [2/3] yarn build:prod (compila produção → dist/)..."
+echo "==> [2/3] yarn build:prod (compila produção + assina/notariza no macOS → dist/)..."
 yarn build:prod
 
-OS="$(uname -s)"
+# ── macOS: gruda (staple) o ticket no .app antes de empacotar ───────────────────
+# Assim o .app abre offline e o .dmg/.zip carregam um app já validável sem rede.
+# build:prod notariza; o staple aqui é idempotente (re-staple é inofensivo) e ainda
+# pega uma notarização que tenha falhado em silêncio (stapler aborta sem ticket).
+if [ "$OS" = "Darwin" ] && [ "$MAC_SIGNED" = 1 ]; then
+  app="$(find dist -maxdepth 3 -name '*.app' -type d 2>/dev/null | head -1)"
+  if [ -n "$app" ]; then
+    echo "==> macOS: stapling do ticket de notarização em $app"
+    if ! xcrun stapler staple "$app"; then
+      echo "❌ stapler staple falhou — o .app foi mesmo notarizado? (veja o erro acima)" >&2
+      exit 1
+    fi
+  fi
+fi
+
 case "$OS" in
   Darwin)
-    echo "==> [3/3] yarn package (gera o instalador do macOS)..."
+    echo "==> [3/3] yarn package (.zip de auto-update + .dmg de distribuição)..."
     yarn package
-    echo "OK: instalador/app em dist/."
+    if [ "$MAC_SIGNED" = 1 ]; then
+      echo "==> macOS: conferindo Developer ID + notarização do .app..."
+      app="$(find dist -maxdepth 3 -name '*.app' -type d 2>/dev/null | head -1)"
+      if [ -z "$app" ]; then
+        echo "❌ não encontrei o .app em dist/ para verificar." >&2
+        exit 1
+      fi
+      # Veredito pelo EXIT CODE direto do spctl/stapler (não `codesign | grep`).
+      if ! spctl -a -t exec "$app" >/dev/null 2>&1; then
+        echo "❌ .app rejeitado pelo Gatekeeper (ad-hoc / não notarizado)." >&2
+        exit 1
+      fi
+      if ! xcrun stapler validate "$app" >/dev/null 2>&1; then
+        echo "❌ .app sem ticket de notarização grudado (não abriria offline)." >&2
+        exit 1
+      fi
+      echo "    ✓ Developer ID + notarização confirmados — distribuível"
+    fi
+    echo "OK: .zip (auto-update) + .dmg (distribuição) em dist/."
     ;;
   Linux)
     echo "==> [3/3] yarn package (gera .deb + AppImage no host)..."

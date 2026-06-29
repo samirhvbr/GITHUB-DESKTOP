@@ -46,6 +46,7 @@ const assertExistsSync = (path: string) => {
 
 if (process.platform === 'darwin') {
   packageOSX()
+  packageOSXDMG()
 } else if (process.platform === 'win32') {
   packageWindows()
 } else if (process.platform === 'linux') {
@@ -69,6 +70,39 @@ function packageOSX() {
   cp.execSync(
     `ditto -ck --keepParent "${distPath}/${productName}.app" "${dest}"`
   )
+}
+
+// Fork addition: a distributable .dmg alongside the Squirrel.Mac .zip. What
+// Gatekeeper checks is the .app inside, which must already be signed + notarized
+// + stapled (build:prod notarizes; build-dist.sh staples before this runs).
+// Built with the macOS built-in `hdiutil` — no extra dependency, darwin-only.
+function packageOSXDMG() {
+  const appPath = `${distPath}/${productName}.app`
+  assertExistsSync(appPath)
+
+  // dmg lands beside the zip: dist/<Product>-<arch>.dmg
+  const dmgPath = getOSXZipPath().replace(/\.zip$/, '.dmg')
+  rmSync(dmgPath, { force: true })
+
+  // Stage the .app beside an /Applications symlink for the familiar
+  // drag-to-install layout. `ditto` (not cp) preserves the code signature and
+  // the stapled notarization ticket when copying the bundle.
+  const stageDir = join(getDistRoot(), '.dmg-stage')
+  rmSync(stageDir, { recursive: true, force: true })
+  mkdirSync(stageDir, { recursive: true })
+  cp.execSync(`ditto "${appPath}" "${stageDir}/${productName}.app"`)
+  cp.execSync(`ln -s /Applications "${stageDir}/Applications"`)
+
+  console.log('Packaging for macOS (dmg)…')
+  // UDZO = zlib-compressed, read-only — the standard format for distribution.
+  cp.execSync(
+    `hdiutil create -volname "${productName}" -srcfolder "${stageDir}" ` +
+      `-ov -format UDZO "${dmgPath}"`,
+    { stdio: 'inherit' }
+  )
+
+  rmSync(stageDir, { recursive: true, force: true })
+  console.log(`Created ${dmgPath}`)
 }
 
 function packageWindows() {

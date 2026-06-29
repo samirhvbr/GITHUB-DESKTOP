@@ -1,5 +1,14 @@
 # Build do macOS — assinatura & notarização (pra não ir pro lixo)
 
+> **✅ IMPLEMENTADO (2026-06-29).** O `build-dist.sh` agora: (1) gera o **`.dmg`**
+> (via `hdiutil`, na função `packageOSXDMG` do `script/package.ts`) além do `.zip`
+> de auto-update; (2) **auto-carrega** `~/.config/sshvterm/build.env` e mapeia
+> `APPLE_PASSWORD → APPLE_ID_PASSWORD`; (3) **trava anti-ad-hoc** (com
+> `--allow-adhoc` p/ teste); (4) faz **staple** do ticket e **confere**
+> `spctl`/`stapler` no fim, abortando se reprovar. O "workaround manual" abaixo
+> não é mais necessário; o Q&A e as seções seguintes são o histórico de
+> 2026-06-28 (pré-correção).
+
 > **Pergunta do operador (2026-06-28):** "o build no Mac vou fazer no mesmo Mac
 > do shvterm, ele já puxa aqueles tokens necessários pra não ir direto pra
 > lixeira?"
@@ -62,10 +71,11 @@ Se `spctl` reprovar → o app não está notarizado, **não distribua**.
 | Team ID | `APPLE_TEAM_ID` | `APPLE_TEAM_ID` | ✅ igual |
 | Cert de assinatura | keychain (Developer ID) | keychain (auto-descobre) | ✅ mesmo cert |
 
-## Correção recomendada (pendente — decidir e implementar)
+## ✅ Correção (implementada em 2026-06-29 no `build-dist.sh` + `package.ts`)
 
-Portar o bloco de credenciais do `build-local.sh` do shvterm pro
-`build-dist.sh` (e par `.ps1`/`.cmd`), de modo que ele:
+Portado o bloco de credenciais do `build-local.sh` do shvterm pro
+`build-dist.sh` (o par `.ps1`/`.cmd` do Windows ainda **não** recebeu), de modo
+que ele:
 
 1. **auto-carregue** `~/.config/sshvterm/build.env` (ou um `build.env` próprio do
    desktop) e **mapeie** `APPLE_PASSWORD → APPLE_ID_PASSWORD`;
@@ -74,10 +84,10 @@ Portar o bloco de credenciais do `build-local.sh` do shvterm pro
 3. **verifique no fim** com `spctl -a -t exec` + `xcrun stapler validate` e
    aborte se reprovar.
 
-Isso entra junto da decisão maior (ver [build-scripts-vs-shvterm] abaixo):
-**(A)** só a trava de `git pull` antes de buildar, ou **(B)** paridade total
-(trava de sync + cronômetro por etapa + flags `-ForceSync`/`-NoPull`).
-Recomendação: **(B) + este bloco de credenciais do macOS**.
+Feitos o bloco de credenciais do macOS + a geração do `.dmg`. **Ainda pendente**
+(decisão maior): **(B)** a ergonomia do `build-local.sh` — trava de `git pull`
+antes de buildar, cronômetro por etapa e flags `--force-sync`/`--no-pull` —, e
+portar este mesmo bloco de credenciais para o par Windows (`.ps1`/`.cmd`).
 
 ## ⚠️ A confirmar antes do 1º release pra fora (não trava o build local)
 
@@ -91,10 +101,11 @@ sua conta Apple**, senão a notarização/distribuição fica ambígua. Revisar
 - **Existem e cobrem os 3 SOs:** [build-dist.ps1](../build-dist.ps1) +
   [.cmd](../build-dist.cmd) (Windows), [build-dist.sh](../build-dist.sh)
   (macOS `.dmg`/`.app` e Linux `.deb`).
-- **Mas são "light" vs. o `build-local` do shvterm:** faltam (1) **git
-  sync/pull antes de buildar** (a trava "não buildar versão atrasada"), (2)
-  cronômetro por etapa, (3) flags `-ForceSync`/`-NoPull`, e (4) — no macOS —
-  todo o bloco de credenciais/guarda acima.
+- **Ainda "light" vs. o `build-local` do shvterm** no quesito sync: faltam (1)
+  **git sync/pull antes de buildar** (a trava "não buildar versão atrasada"),
+  (2) cronômetro por etapa e (3) flags `--force-sync`/`--no-pull`. O bloco (4)
+  de credenciais/guarda do macOS **já foi portado** (2026-06-29); falta o
+  equivalente no par Windows (`.ps1`/`.cmd`).
 - Mais relevante porque há **dois clones** do GITHUB_DESKTOP na máquina
   (`x\GITHUB_DESKTOP` em `multi-repo-dashboard` e
   `Documents\GitHub\GITHUB_DESKTOP` em `development`) — exatamente o cenário
