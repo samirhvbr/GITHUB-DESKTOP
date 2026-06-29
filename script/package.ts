@@ -75,7 +75,15 @@ function packageOSX() {
 // Fork addition: a distributable .dmg alongside the Squirrel.Mac .zip. What
 // Gatekeeper checks is the .app inside, which must already be signed + notarized
 // + stapled (build:prod notarizes; build-dist.sh staples before this runs).
-// Built with the macOS built-in `hdiutil` — no extra dependency, darwin-only.
+//
+// The window is "styled" (big icons, the .app on the left and an /Applications
+// drop-link on the right, custom volume icon) so the installer looks like a
+// shipped product instead of a bare disk image. That layout is baked into the
+// image's .DS_Store by script/bundle_dmg.sh — the vendored create-dmg from Tauri
+// (Apache-2.0/MIT, no install step). It uses only macOS built-ins (hdiutil +
+// osascript). If Finder automation isn't available (e.g. a headless CI runner)
+// the script falls back to an unstyled — but still functional — dmg.
+// darwin-only.
 function packageOSXDMG() {
   const appPath = `${distPath}/${productName}.app`
   assertExistsSync(appPath)
@@ -84,24 +92,51 @@ function packageOSXDMG() {
   const dmgPath = getOSXZipPath().replace(/\.zip$/, '.dmg')
   rmSync(dmgPath, { force: true })
 
-  // Stage the .app beside an /Applications symlink for the familiar
-  // drag-to-install layout. `ditto` (not cp) preserves the code signature and
-  // the stapled notarization ticket when copying the bundle.
+  // create-dmg copies the *whole* source folder into the image, so stage a
+  // folder holding only the .app — otherwise the LICENSE/version files sitting
+  // next to it in dist/ would clutter the installer window. `ditto` (not cp)
+  // preserves the code signature and the stapled notarization ticket. The
+  // /Applications drop-link is added by the script via --app-drop-link, so it
+  // must NOT live in the staging folder.
   const stageDir = join(getDistRoot(), '.dmg-stage')
   rmSync(stageDir, { recursive: true, force: true })
   mkdirSync(stageDir, { recursive: true })
   cp.execSync(`ditto "${appPath}" "${stageDir}/${productName}.app"`)
-  cp.execSync(`ln -s /Applications "${stageDir}/Applications"`)
+
+  // Volume icon = the app's own icon, kept outside the staging folder so it
+  // isn't copied in as a visible file (create-dmg installs it as .VolumeIcon).
+  const volIcon = join(getDistRoot(), '.dmg-volicon.icns')
+  const iconSource = join(getIconDirectory(), 'icon-logo.icns')
+  const hasIcon = existsSync(iconSource)
+  if (hasIcon) {
+    cp.execSync(`cp "${iconSource}" "${volIcon}"`)
+  }
+
+  const dmgScript = join(__dirname, 'bundle_dmg.sh')
+  assertExistsSync(dmgScript)
 
   console.log('Packaging for macOS (dmg)…')
-  // UDZO = zlib-compressed, read-only — the standard format for distribution.
+  // Invoke via `bash` so a lost exec bit (git checkout) doesn't break the build.
   cp.execSync(
-    `hdiutil create -volname "${productName}" -srcfolder "${stageDir}" ` +
-      `-ov -format UDZO "${dmgPath}"`,
+    [
+      `bash "${dmgScript}"`,
+      `--volname "${productName}"`,
+      ...(hasIcon ? [`--volicon "${volIcon}"`] : []),
+      `--window-pos 200 120`,
+      `--window-size 660 400`,
+      `--icon-size 128`,
+      `--text-size 16`,
+      `--icon "${productName}.app" 180 170`,
+      `--hide-extension "${productName}.app"`,
+      `--app-drop-link 480 170`,
+      `"${dmgPath}"`,
+      `"${stageDir}"`,
+    ].join(' '),
     { stdio: 'inherit' }
   )
 
   rmSync(stageDir, { recursive: true, force: true })
+  rmSync(volIcon, { force: true })
   console.log(`Created ${dmgPath}`)
 }
 
