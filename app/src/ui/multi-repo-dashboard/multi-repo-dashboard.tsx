@@ -5,9 +5,16 @@ import pLimit from 'p-limit'
 import { UiView } from '../ui-view'
 import { Repository, ILocalRepositoryState } from '../../models/repository'
 import {
+  AutoPushScheduleMode,
   getAutoPushPreferences,
+  getAutoPullPreferences,
+  parseDailyTime,
   DefaultAutoPushIntervalMinutes,
   MinAutoPushIntervalMinutes,
+  DefaultAutoPushDailyTime,
+  DefaultAutoPullIntervalMinutes,
+  MinAutoPullIntervalMinutes,
+  DefaultAutoPullDailyTime,
   DefaultAutoCommitMessage,
 } from '../../models/workflow-preferences'
 import { showOpenDialog } from '../main-process-proxy'
@@ -20,6 +27,7 @@ import * as octicons from '../octicons/octicons.generated'
 import { Button } from '../lib/button'
 import { Checkbox, CheckboxValue } from '../lib/checkbox'
 import { TextBox } from '../lib/text-box'
+import { Select } from '../lib/select'
 import { Dialog, DialogContent, DialogFooter } from '../dialog'
 import { OkCancelButtonGroup } from '../dialog/ok-cancel-button-group'
 import { TooltippedContent } from '../lib/tooltipped-content'
@@ -69,7 +77,8 @@ interface IMultiRepoDashboardRowProps {
 }
 
 class MultiRepoDashboardRow extends React.Component<IMultiRepoDashboardRowProps> {
-  private onToggle = () => this.props.onToggleSelected(this.props.row.repository)
+  private onToggle = () =>
+    this.props.onToggleSelected(this.props.row.repository)
   private onOpen = () => this.props.onOpen(this.props.row.repository)
   private onToggleAutoPush = () =>
     this.props.onToggleAutoPush(this.props.row.repository)
@@ -110,7 +119,9 @@ class MultiRepoDashboardRow extends React.Component<IMultiRepoDashboardRowProps>
       <TooltippedContent
         tagName="span"
         className="op-status error"
-        tooltip={op.message ? `${verb} falhou: ${op.message}` : `${verb} falhou`}
+        tooltip={
+          op.message ? `${verb} falhou: ${op.message}` : `${verb} falhou`
+        }
       >
         <Octicon symbol={octicons.x} />
       </TooltippedContent>
@@ -278,12 +289,25 @@ interface IMultiRepoDashboardState {
 
   /** Mostra o diálogo de configuração de auto-push em lote. */
   readonly autoPushConfigOpen: boolean
+  /** Modo de agendamento escolhido no diálogo de auto-push em lote. */
+  readonly autoPushConfigMode: AutoPushScheduleMode
   /** Intervalo (texto editável) do diálogo de auto-push em lote. */
   readonly autoPushConfigInterval: string
+  /** Horário "HH:MM" do diálogo de auto-push em lote (modo diário). */
+  readonly autoPushConfigDailyTime: string
   /** Auto-commit ligado no diálogo de auto-push em lote. */
   readonly autoPushConfigAutoCommit: boolean
   /** Mensagem de commit do diálogo de auto-push em lote (vazio = padrão). */
   readonly autoPushConfigMessage: string
+
+  /** Mostra o diálogo de configuração de auto-pull em lote. */
+  readonly autoPullConfigOpen: boolean
+  /** Modo de agendamento escolhido no diálogo de auto-pull em lote. */
+  readonly autoPullConfigMode: AutoPushScheduleMode
+  /** Intervalo (texto editável) do diálogo de auto-pull em lote. */
+  readonly autoPullConfigInterval: string
+  /** Horário "HH:MM" do diálogo de auto-pull em lote (modo diário). */
+  readonly autoPullConfigDailyTime: string
 }
 
 /**
@@ -313,9 +337,15 @@ export class MultiRepoDashboard extends React.Component<
       addFolderAdding: false,
       collapsedGroups: new Set<string>(),
       autoPushConfigOpen: false,
+      autoPushConfigMode: AutoPushScheduleMode.Interval,
       autoPushConfigInterval: String(DefaultAutoPushIntervalMinutes),
+      autoPushConfigDailyTime: DefaultAutoPushDailyTime,
       autoPushConfigAutoCommit: true,
       autoPushConfigMessage: '',
+      autoPullConfigOpen: false,
+      autoPullConfigMode: AutoPushScheduleMode.Interval,
+      autoPullConfigInterval: String(DefaultAutoPullIntervalMinutes),
+      autoPullConfigDailyTime: DefaultAutoPullDailyTime,
     }
   }
 
@@ -391,9 +421,7 @@ export class MultiRepoDashboard extends React.Component<
    * project folder (e.g. `~/x/BLUE3/*`, `~/x/DRIVE/*`) show together. The label
    * is the parent folder's name. Groups with pending work come first.
    */
-  private getGroups(
-    rows: ReadonlyArray<IDashboardRow>
-  ): ReadonlyArray<{
+  private getGroups(rows: ReadonlyArray<IDashboardRow>): ReadonlyArray<{
     readonly key: string
     readonly label: string
     readonly rows: ReadonlyArray<IDashboardRow>
@@ -630,7 +658,9 @@ export class MultiRepoDashboard extends React.Component<
     }
     this.setState({
       autoPushConfigOpen: true,
+      autoPushConfigMode: AutoPushScheduleMode.Interval,
       autoPushConfigInterval: String(DefaultAutoPushIntervalMinutes),
+      autoPushConfigDailyTime: DefaultAutoPushDailyTime,
       autoPushConfigAutoCommit: true,
       autoPushConfigMessage: '',
     })
@@ -640,8 +670,20 @@ export class MultiRepoDashboard extends React.Component<
     this.setState({ autoPushConfigOpen: false })
   }
 
+  private onAutoPushConfigModeChanged = (
+    event: React.FormEvent<HTMLSelectElement>
+  ) => {
+    this.setState({
+      autoPushConfigMode: event.currentTarget.value as AutoPushScheduleMode,
+    })
+  }
+
   private onAutoPushConfigIntervalChanged = (value: string) => {
     this.setState({ autoPushConfigInterval: value })
+  }
+
+  private onAutoPushConfigDailyTimeChanged = (value: string) => {
+    this.setState({ autoPushConfigDailyTime: value })
   }
 
   private onAutoPushConfigAutoCommitChanged = (
@@ -664,6 +706,10 @@ export class MultiRepoDashboard extends React.Component<
       MinAutoPushIntervalMinutes,
       Number.isFinite(parsed) ? parsed : DefaultAutoPushIntervalMinutes
     )
+    const dailyTime =
+      parseDailyTime(this.state.autoPushConfigDailyTime) !== null
+        ? this.state.autoPushConfigDailyTime
+        : DefaultAutoPushDailyTime
     const message = this.state.autoPushConfigMessage.trim()
 
     for (const row of selected) {
@@ -672,7 +718,9 @@ export class MultiRepoDashboard extends React.Component<
           ...row.repository.workflowPreferences,
           autoPush: {
             enabled: true,
+            mode: this.state.autoPushConfigMode,
             intervalMinutes,
+            dailyTime,
             autoCommit: this.state.autoPushConfigAutoCommit,
             commitMessage: message.length > 0 ? message : undefined,
           },
@@ -685,6 +733,122 @@ export class MultiRepoDashboard extends React.Component<
     this.setState({
       autoPushConfigOpen: false,
       notice: `Push automático configurado em ${selected.length} repo(s).`,
+    })
+  }
+
+  /**
+   * Run the scheduled-pull flow *now* for the selected repositories (refresh →
+   * guarded pull). Mirrors `onTestAutoPushSelected`.
+   */
+  private onTestAutoPullSelected = async () => {
+    if (this.state.isRunning) {
+      return
+    }
+    const selected = this.getRows().filter(r =>
+      this.state.selectedRepoIds.has(r.repository.id)
+    )
+    if (selected.length === 0) {
+      this.setState({ notice: 'Selecione ao menos um repositório.' })
+      return
+    }
+
+    this.setState({ isRunning: true, ops: new Map(), notice: null })
+
+    const results = new Array<string>()
+    const limit = pLimit(MaxConcurrentSyncs)
+
+    await Promise.all(
+      selected.map(row =>
+        limit(async () => {
+          const repo = row.repository
+          this.setOp(repo.id, { kind: 'pull', status: 'running' })
+          try {
+            const message = await this.props.dispatcher.runScheduledPullNow(repo)
+            this.setOp(repo.id, { kind: 'pull', status: 'done', message })
+            results.push(message)
+            await this.props.dispatcher.refreshRepositoryIndicator(repo)
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e)
+            log.error(
+              `[MultiRepoDashboard] test auto-pull failed for '${repo.name}'`,
+              e
+            )
+            this.setOp(repo.id, { kind: 'pull', status: 'error', message })
+            results.push(`${repo.name}: erro — ${message}`)
+          }
+        })
+      )
+    )
+
+    this.setState({ isRunning: false, notice: results.join(' · ') })
+  }
+
+  private onOpenAutoPullConfig = () => {
+    if (this.state.isRunning || this.state.selectedRepoIds.size === 0) {
+      return
+    }
+    this.setState({
+      autoPullConfigOpen: true,
+      autoPullConfigMode: AutoPushScheduleMode.Interval,
+      autoPullConfigInterval: String(DefaultAutoPullIntervalMinutes),
+      autoPullConfigDailyTime: DefaultAutoPullDailyTime,
+    })
+  }
+
+  private onCloseAutoPullConfig = () => {
+    this.setState({ autoPullConfigOpen: false })
+  }
+
+  private onAutoPullConfigModeChanged = (
+    event: React.FormEvent<HTMLSelectElement>
+  ) => {
+    this.setState({
+      autoPullConfigMode: event.currentTarget.value as AutoPushScheduleMode,
+    })
+  }
+
+  private onAutoPullConfigIntervalChanged = (value: string) => {
+    this.setState({ autoPullConfigInterval: value })
+  }
+
+  private onAutoPullConfigDailyTimeChanged = (value: string) => {
+    this.setState({ autoPullConfigDailyTime: value })
+  }
+
+  /** Apply the batch dialog's settings to every selected repo, enabling pull. */
+  private onApplyAutoPullConfig = () => {
+    const selected = this.getRows().filter(r =>
+      this.state.selectedRepoIds.has(r.repository.id)
+    )
+    const parsed = parseInt(this.state.autoPullConfigInterval, 10)
+    const intervalMinutes = Math.max(
+      MinAutoPullIntervalMinutes,
+      Number.isFinite(parsed) ? parsed : DefaultAutoPullIntervalMinutes
+    )
+    const dailyTime =
+      parseDailyTime(this.state.autoPullConfigDailyTime) !== null
+        ? this.state.autoPullConfigDailyTime
+        : DefaultAutoPullDailyTime
+
+    for (const row of selected) {
+      this.props.dispatcher
+        .updateRepositoryWorkflowPreferences(row.repository, {
+          ...row.repository.workflowPreferences,
+          autoPull: {
+            enabled: true,
+            mode: this.state.autoPullConfigMode,
+            intervalMinutes,
+            dailyTime,
+          },
+        })
+        .catch(e =>
+          log.error('[MultiRepoDashboard] apply auto-pull config failed', e)
+        )
+    }
+
+    this.setState({
+      autoPullConfigOpen: false,
+      notice: `Pull automático configurado em ${selected.length} repo(s).`,
     })
   }
 
@@ -1037,8 +1201,7 @@ export class MultiRepoDashboard extends React.Component<
             <div className="add-folder-list">
               {found.map(p => {
                 const isTracked = tracked.has(p)
-                const checked =
-                  isTracked || this.state.addFolderSelected.has(p)
+                const checked = isTracked || this.state.addFolderSelected.has(p)
                 return (
                   <div className="found-repo" key={p}>
                     <Checkbox
@@ -1063,7 +1226,10 @@ export class MultiRepoDashboard extends React.Component<
   /** Repos grouped by what they need, for the status report. */
   private getStatusSections(
     rows: ReadonlyArray<IDashboardRow>
-  ): ReadonlyArray<{ readonly title: string; readonly items: ReadonlyArray<string> }> {
+  ): ReadonlyArray<{
+    readonly title: string
+    readonly items: ReadonlyArray<string>
+  }> {
     const label = (row: IDashboardRow, detail?: string) =>
       detail ? `${row.repository.name} — ${detail}` : row.repository.name
 
@@ -1082,7 +1248,9 @@ export class MultiRepoDashboard extends React.Component<
     return [
       {
         title: 'Para commitar',
-        items: needCommit.map(r => label(r, `${r.changedFilesCount} arquivo(s)`)),
+        items: needCommit.map(r =>
+          label(r, `${r.changedFilesCount} arquivo(s)`)
+        ),
       },
       {
         title: 'Atrás do remoto (pull)',
@@ -1106,7 +1274,9 @@ export class MultiRepoDashboard extends React.Component<
       return null
     }
 
-    const nameById = new Map(rows.map(r => [r.repository.id, r.repository.name]))
+    const nameById = new Map(
+      rows.map(r => [r.repository.id, r.repository.name])
+    )
     const verb = entries[0][1].kind === 'pull' ? 'Pull' : 'Push'
 
     const lines = entries.map(([id, op]) => {
@@ -1197,8 +1367,8 @@ export class MultiRepoDashboard extends React.Component<
           {opsReport !== null && (
             <div className="report-section last-op">
               <h3>
-                Última ação em lote — {opsReport.verb} (
-                {opsReport.lines.length})
+                Última ação em lote — {opsReport.verb} ({opsReport.lines.length}
+                )
               </h3>
               <ul>
                 {opsReport.lines.map((item, i) => (
@@ -1255,8 +1425,8 @@ export class MultiRepoDashboard extends React.Component<
               {this.state.isRefreshing && (
                 <span className="refreshing">
                   {' · '}
-                  <Octicon className="spin" symbol={syncClockwise} /> atualizando
-                  status…
+                  <Octicon className="spin" symbol={syncClockwise} />{' '}
+                  atualizando status…
                 </span>
               )}
             </div>
@@ -1287,7 +1457,9 @@ export class MultiRepoDashboard extends React.Component<
                 <div className="batch-actions">
                   <Button onClick={this.onToggleAllGroups} disabled={isRunning}>
                     <Octicon
-                      symbol={allGroupsCollapsed ? octicons.unfold : octicons.fold}
+                      symbol={
+                        allGroupsCollapsed ? octicons.unfold : octicons.fold
+                      }
                     />
                     {allGroupsCollapsed ? 'Expandir todos' : 'Colapsar todos'}
                   </Button>
@@ -1333,6 +1505,20 @@ export class MultiRepoDashboard extends React.Component<
                     <Octicon symbol={octicons.play} />
                     Testar auto-push{countLabel}
                   </Button>
+                  <Button
+                    onClick={this.onOpenAutoPullConfig}
+                    disabled={actionDisabled}
+                  >
+                    <Octicon symbol={octicons.gear} />
+                    Configurar auto-pull{countLabel}
+                  </Button>
+                  <Button
+                    onClick={this.onTestAutoPullSelected}
+                    disabled={actionDisabled}
+                  >
+                    <Octicon symbol={octicons.play} />
+                    Testar auto-pull{countLabel}
+                  </Button>
                   <Button onClick={this.onShowReport} disabled={isRunning}>
                     <Octicon symbol={octicons.listUnordered} />
                     Status
@@ -1362,6 +1548,7 @@ export class MultiRepoDashboard extends React.Component<
           </>
         )}
         {this.state.autoPushConfigOpen && this.renderAutoPushConfigDialog()}
+        {this.state.autoPullConfigOpen && this.renderAutoPullConfigDialog()}
       </UiView>
     )
   }
@@ -1382,11 +1569,32 @@ export class MultiRepoDashboard extends React.Component<
             Liga o push automático em <strong>{count}</strong> repositório(s)
             selecionado(s), com estas configurações.
           </p>
-          <TextBox
-            label="Intervalo (minutos)"
-            value={this.state.autoPushConfigInterval}
-            onValueChanged={this.onAutoPushConfigIntervalChanged}
-          />
+          <Select
+            label="Quando fazer o push"
+            value={this.state.autoPushConfigMode}
+            onChange={this.onAutoPushConfigModeChanged}
+          >
+            <option value={AutoPushScheduleMode.Interval}>
+              A cada X minutos
+            </option>
+            <option value={AutoPushScheduleMode.Daily}>
+              Todo dia em um horário fixo
+            </option>
+          </Select>
+          {this.state.autoPushConfigMode === AutoPushScheduleMode.Daily ? (
+            <TextBox
+              type="time"
+              label="Horário do push (todos os dias)"
+              value={this.state.autoPushConfigDailyTime}
+              onValueChanged={this.onAutoPushConfigDailyTimeChanged}
+            />
+          ) : (
+            <TextBox
+              label="Intervalo (minutos)"
+              value={this.state.autoPushConfigInterval}
+              onValueChanged={this.onAutoPushConfigIntervalChanged}
+            />
+          )}
           <Checkbox
             label="Auto-commit das alterações pendentes antes do push"
             value={autoCommit ? CheckboxValue.On : CheckboxValue.Off}
@@ -1402,6 +1610,62 @@ export class MultiRepoDashboard extends React.Component<
           <p className="auto-push-description">
             Intervalo mínimo de {MinAutoPushIntervalMinutes} min. Nunca faz
             force-push; só empurra quando há commits à frente do upstream.
+          </p>
+        </DialogContent>
+        <DialogFooter>
+          <OkCancelButtonGroup
+            okButtonText={`Aplicar a ${count} repo(s)`}
+            cancelButtonText="Cancelar"
+          />
+        </DialogFooter>
+      </Dialog>
+    )
+  }
+
+  /** Batch auto-pull configuration dialog (applies to the selected repos). */
+  private renderAutoPullConfigDialog() {
+    const count = this.state.selectedRepoIds.size
+    return (
+      <Dialog
+        id="multi-repo-auto-pull-config"
+        title="Configurar pull automático"
+        onSubmit={this.onApplyAutoPullConfig}
+        onDismissed={this.onCloseAutoPullConfig}
+      >
+        <DialogContent>
+          <p>
+            Liga o pull automático em <strong>{count}</strong> repositório(s)
+            selecionado(s), com estas configurações.
+          </p>
+          <Select
+            label="Quando fazer o pull"
+            value={this.state.autoPullConfigMode}
+            onChange={this.onAutoPullConfigModeChanged}
+          >
+            <option value={AutoPushScheduleMode.Interval}>
+              A cada X minutos
+            </option>
+            <option value={AutoPushScheduleMode.Daily}>
+              Todo dia em um horário fixo
+            </option>
+          </Select>
+          {this.state.autoPullConfigMode === AutoPushScheduleMode.Daily ? (
+            <TextBox
+              type="time"
+              label="Horário do pull (todos os dias)"
+              value={this.state.autoPullConfigDailyTime}
+              onValueChanged={this.onAutoPullConfigDailyTimeChanged}
+            />
+          ) : (
+            <TextBox
+              label="Intervalo (minutos)"
+              value={this.state.autoPullConfigInterval}
+              onValueChanged={this.onAutoPullConfigIntervalChanged}
+            />
+          )}
+          <p className="auto-push-description">
+            Intervalo mínimo de {MinAutoPullIntervalMinutes} min. Só faz pull
+            quando há um remote com upstream rastreado; nunca força.
           </p>
         </DialogContent>
         <DialogFooter>

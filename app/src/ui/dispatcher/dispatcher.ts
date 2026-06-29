@@ -1881,6 +1881,14 @@ export class Dispatcher {
     )
   }
 
+  /**
+   * Fork: run the scheduled-pull flow for a repository right now (for the
+   * "Testar agora" button in repository settings). Returns a result string.
+   */
+  public runScheduledPullNow(repository: Repository): Promise<string> {
+    return this.appStore._runScheduledPullNow(repository)
+  }
+
   public async setAppFocusState(isFocused: boolean): Promise<void> {
     await this.appStore._setAppFocusState(isFocused)
 

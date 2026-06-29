@@ -257,7 +257,7 @@ import { TypedBaseStore } from './base-store'
 import { MergeTreeResult } from '../../models/merge'
 import { promiseWithMinimumTimeout } from '../promise'
 import { BackgroundFetcher } from './helpers/background-fetcher'
-import { BackgroundPusher } from './helpers/background-pusher'
+import { BackgroundPusher, PushSchedule } from './helpers/background-pusher'
 import { RepositoryStateCache } from './repository-state-cache'
 import { readEmoji } from '../read-emoji'
 import { Emoji } from '../emoji'
@@ -334,7 +334,11 @@ import { getDefaultDir } from '../../ui/lib/default-dir'
 import {
   WorkflowPreferences,
   AutoPushPreferences,
+  AutoPullPreferences,
+  AutoPushScheduleMode,
   getAutoPushPreferences,
+  getAutoPullPreferences,
+  parseDailyTime,
   DefaultAutoCommitMessage,
 } from '../../models/workflow-preferences'
 import { RepositoryIndicatorUpdater } from './helpers/repository-indicator-updater'
@@ -593,6 +597,16 @@ export class AppStore extends TypedBaseStore<IAppState> {
    * can detect an interval change and restart only the affected pusher.
    */
   private readonly backgroundPusherSignatures = new Map<number, string>()
+
+  /**
+   * Background pullers for repositories with scheduled pull enabled, keyed by
+   * repository id. Mirror of `backgroundPushers`; see `reconcileBackgroundPullers`.
+   * Fork feature (multi-repo dashboard).
+   */
+  private readonly backgroundPullers = new Map<number, BackgroundPusher>()
+
+  /** Schedule signature of each running puller (see `backgroundPusherSignatures`). */
+  private readonly backgroundPullerSignatures = new Map<number, string>()
 
   private currentBranchPruner: BranchPruner | null = null
 
@@ -1065,6 +1079,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
       this.repositories = updateRepositories
       this.updateRepositorySelectionAfterRepositoriesChanged()
       this.reconcileBackgroundPushers()
+      this.reconcileBackgroundPullers()
       this.emitUpdate()
     })
 
@@ -2404,6 +2419,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     this.updateRepositorySelectionAfterRepositoriesChanged()
 
     this.reconcileBackgroundPushers()
+    this.reconcileBackgroundPullers()
 
     this.sidebarWidth = constrain(
       getNumber(sidebarWidthConfigKey, defaultSidebarWidth)
@@ -4261,7 +4277,10 @@ export class AppStore extends TypedBaseStore<IAppState> {
   public async _setTelegramBotToken(token: string): Promise<void> {
     const trimmed = token.trim()
     if (trimmed.length === 0) {
-      await TokenStore.deleteItem(TelegramTokenStoreKey, TelegramTokenStoreLogin)
+      await TokenStore.deleteItem(
+        TelegramTokenStoreKey,
+        TelegramTokenStoreLogin
+      )
       this.telegramHasToken = false
     } else {
       await TokenStore.setItem(
@@ -7986,12 +8005,19 @@ export class AppStore extends TypedBaseStore<IAppState> {
    * Reconcile the running background pushers with the current repositories and
    * their auto-push preferences: start a pusher for every repository that has
    * scheduled push enabled, stop the ones that no longer do (disabled/removed),
-   * and restart a pusher whose interval changed.
+   * and restart a pusher whose schedule (mode, interval, or daily time) changed.
    *
    * Fork feature (multi-repo dashboard — scheduled push). Called whenever the
    * repository list or its preferences change.
    */
   private reconcileBackgroundPushers() {
+    // A pusher must be torn down and recreated whenever anything that affects
+    // its timer changes — the mode, the interval, or the daily time.
+    const scheduleSignature = (prefs: AutoPushPreferences): string =>
+      prefs.mode === AutoPushScheduleMode.Daily
+        ? `daily:${prefs.dailyTime}`
+        : `interval:${prefs.intervalMinutes}`
+
     const desired = new Map<number, AutoPushPreferences>()
     for (const repo of this.repositories) {
       const prefs = getAutoPushPreferences(repo.workflowPreferences)
@@ -8003,7 +8029,7 @@ export class AppStore extends TypedBaseStore<IAppState> {
     // Stop pushers that are no longer wanted or whose interval changed.
     for (const [id, pusher] of this.backgroundPushers) {
       const want = desired.get(id)
-      const signature = want === undefined ? null : String(want.intervalMinutes)
+      const signature = want === undefined ? null : scheduleSignature(want)
       if (
         signature === null ||
         signature !== this.backgroundPusherSignatures.get(id)
@@ -8025,18 +8051,31 @@ export class AppStore extends TypedBaseStore<IAppState> {
         continue
       }
 
-      const intervalMs = prefs.intervalMinutes * 60 * 1000
+      const parsedDailyTime = parseDailyTime(prefs.dailyTime)
+      const schedule: PushSchedule =
+        prefs.mode === AutoPushScheduleMode.Daily && parsedDailyTime !== null
+          ? {
+              kind: 'daily',
+              hour: parsedDailyTime.hour,
+              minute: parsedDailyTime.minute,
+            }
+          : { kind: 'interval', intervalMs: prefs.intervalMinutes * 60 * 1000 }
+
       const pusher = new BackgroundPusher(
         repository,
-        intervalMs,
+        schedule,
         r => this.autoPushRepository(r),
         r => this.isAutoPushEnabled(r)
       )
       this.backgroundPushers.set(id, pusher)
-      this.backgroundPusherSignatures.set(id, String(prefs.intervalMinutes))
+      this.backgroundPusherSignatures.set(id, scheduleSignature(prefs))
       pusher.start()
       log.info(
-        `[AutoPush] pusher iniciado: '${repository.name}' a cada ${prefs.intervalMinutes}min`
+        `[AutoPush] pusher iniciado: '${repository.name}' ${
+          schedule.kind === 'daily'
+            ? `todo dia às ${prefs.dailyTime}`
+            : `a cada ${prefs.intervalMinutes}min`
+        }`
       )
     }
 
@@ -8180,6 +8219,176 @@ export class AppStore extends TypedBaseStore<IAppState> {
     }`
     log.info(`[AutoPush] ${msg}`)
     return { message: msg, isConflictBranch: false }
+  }
+
+  // --- Scheduled pull (fork feature: multi-repo dashboard) -----------------
+  // Mirrors the scheduled-push machinery above, reusing the generic
+  // BackgroundPusher timer and the shared schedule model. Kept independent so
+  // push and pull can be enabled separately per repository.
+
+  /**
+   * Reconcile running background pullers with the current repositories and
+   * their auto-pull preferences. Mirrors `reconcileBackgroundPushers`.
+   */
+  private reconcileBackgroundPullers() {
+    const scheduleSignature = (prefs: AutoPullPreferences): string =>
+      prefs.mode === AutoPushScheduleMode.Daily
+        ? `daily:${prefs.dailyTime}`
+        : `interval:${prefs.intervalMinutes}`
+
+    const desired = new Map<number, AutoPullPreferences>()
+    for (const repo of this.repositories) {
+      const prefs = getAutoPullPreferences(repo.workflowPreferences)
+      if (prefs.enabled) {
+        desired.set(repo.id, prefs)
+      }
+    }
+
+    for (const [id, puller] of this.backgroundPullers) {
+      const want = desired.get(id)
+      const signature = want === undefined ? null : scheduleSignature(want)
+      if (
+        signature === null ||
+        signature !== this.backgroundPullerSignatures.get(id)
+      ) {
+        puller.stop()
+        this.backgroundPullers.delete(id)
+        this.backgroundPullerSignatures.delete(id)
+      }
+    }
+
+    for (const [id, prefs] of desired) {
+      if (this.backgroundPullers.has(id)) {
+        continue
+      }
+
+      const repository = this.repositories.find(r => r.id === id)
+      if (repository === undefined) {
+        continue
+      }
+
+      const parsedDailyTime = parseDailyTime(prefs.dailyTime)
+      const schedule: PushSchedule =
+        prefs.mode === AutoPushScheduleMode.Daily && parsedDailyTime !== null
+          ? {
+              kind: 'daily',
+              hour: parsedDailyTime.hour,
+              minute: parsedDailyTime.minute,
+            }
+          : { kind: 'interval', intervalMs: prefs.intervalMinutes * 60 * 1000 }
+
+      const puller = new BackgroundPusher(
+        repository,
+        schedule,
+        r => this.autoPullRepository(r),
+        r => this.isAutoPullEnabled(r)
+      )
+      this.backgroundPullers.set(id, puller)
+      this.backgroundPullerSignatures.set(id, scheduleSignature(prefs))
+      puller.start()
+      log.info(
+        `[AutoPull] puller iniciado: '${repository.name}' ${
+          schedule.kind === 'daily'
+            ? `todo dia às ${prefs.dailyTime}`
+            : `a cada ${prefs.intervalMinutes}min`
+        }`
+      )
+    }
+
+    log.info(
+      `[AutoPull] reconcile: ${this.backgroundPullers.size} puller(s) ativo(s)`
+    )
+  }
+
+  /** Is scheduled pull currently enabled for this repository? */
+  private isAutoPullEnabled(repository: Repository): boolean {
+    const current =
+      this.repositories.find(r => r.id === repository.id) ?? repository
+    return getAutoPullPreferences(current.workflowPreferences).enabled
+  }
+
+  /**
+   * Perform a scheduled pull for a repository: refresh it, then pull — but only
+   * when it's safe (has a remote, a valid branch tip and a tracked upstream).
+   * Never opens a popup; a failed pull (e.g. local changes in the way) is
+   * reported, not forced. Driven by `BackgroundPusher`.
+   */
+  private async autoPullRepository(repository: Repository): Promise<void> {
+    const repo =
+      this.repositories.find(r => r.id === repository.id) ?? repository
+
+    const prefs = getAutoPullPreferences(repo.workflowPreferences)
+    if (!prefs.enabled) {
+      log.info(`[AutoPull] tick '${repo.name}': desligado, ignorando`)
+      return
+    }
+
+    log.info(`[AutoPull] tick '${repo.name}' (agendado)`)
+    await this.runScheduledPull(repo)
+  }
+
+  /**
+   * Manually run the scheduled-pull flow for a repository right now, regardless
+   * of whether scheduled pull is enabled. Used by the "Testar agora" button.
+   * Returns a short human-readable result.
+   */
+  public async _runScheduledPullNow(repository: Repository): Promise<string> {
+    const repo =
+      this.repositories.find(r => r.id === repository.id) ?? repository
+    log.info(`[AutoPull] teste manual '${repo.name}'`)
+    return this.runScheduledPull(repo)
+  }
+
+  /**
+   * Scheduled-pull entry point: runs the flow and reports the outcome to
+   * Telegram. Returns the status message for diagnostics and UI feedback.
+   */
+  private async runScheduledPull(repository: Repository): Promise<string> {
+    const message = await this.computeScheduledPullOutcome(repository)
+    await this.reportScheduledPushToTelegram(message, false)
+    return message
+  }
+
+  /**
+   * Core scheduled-pull flow: refresh, then pull — only when it's safe (remote
+   * present, valid tip, tracked upstream). Never opens a popup. Returns a short
+   * status message.
+   */
+  private async computeScheduledPullOutcome(
+    repository: Repository
+  ): Promise<string> {
+    await this._refreshRepository(repository)
+    const state = this.repositoryStateCache.get(repository)
+
+    if (state.remote === null) {
+      const msg = `${repository.name}: sem remote configurado`
+      log.info(`[AutoPull] ${msg}`)
+      return msg
+    }
+    if (state.branchesState.tip.kind !== TipState.Valid) {
+      const msg = `${repository.name}: branch sem tip válido (unborn/detached)`
+      log.info(`[AutoPull] ${msg}`)
+      return msg
+    }
+    if (state.aheadBehind === null) {
+      const msg = `${repository.name}: sem upstream rastreado`
+      log.info(`[AutoPull] ${msg}`)
+      return msg
+    }
+
+    try {
+      log.info(`[AutoPull] pulling '${repository.name}'`)
+      await this._pull(repository)
+      await this._refreshRepository(repository)
+      const msg = `${repository.name}: pull concluído`
+      log.info(`[AutoPull] ${msg}`)
+      return msg
+    } catch (e) {
+      const detail = e instanceof Error ? e.message : String(e)
+      const msg = `${repository.name}: pull falhou (${detail})`
+      log.error(`[AutoPull] ${msg}`)
+      return msg
+    }
   }
 
   /**

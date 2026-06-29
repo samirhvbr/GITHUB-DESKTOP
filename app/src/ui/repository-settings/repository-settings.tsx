@@ -17,13 +17,22 @@ import { readGitIgnoreAtRoot } from '../../lib/git'
 import { OkCancelButtonGroup } from '../dialog/ok-cancel-button-group'
 import { ForkSettings } from './fork-settings'
 import { AutoPushSettings } from './auto-push-settings'
+import { AutoPullSettings } from './auto-pull-settings'
 import {
   ForkContributionTarget,
   WorkflowPreferences,
   AutoPushPreferences,
+  AutoPullPreferences,
+  AutoPushScheduleMode,
   getAutoPushPreferences,
+  getAutoPullPreferences,
+  parseDailyTime,
   MinAutoPushIntervalMinutes,
   DefaultAutoPushIntervalMinutes,
+  DefaultAutoPushDailyTime,
+  MinAutoPullIntervalMinutes,
+  DefaultAutoPullIntervalMinutes,
+  DefaultAutoPullDailyTime,
 } from '../../models/workflow-preferences'
 import { GitConfigLocation, GitConfig } from './git-config'
 import {
@@ -54,6 +63,7 @@ export enum RepositorySettingsTab {
   IgnoredFiles,
   GitConfig,
   AutoPush,
+  AutoPull,
   ForkSettings,
 }
 
@@ -76,9 +86,15 @@ interface IRepositorySettingsState {
   readonly forkContributionTarget: ForkContributionTarget
   readonly isLoadingGitConfig: boolean
   readonly autoPushEnabled: boolean
+  readonly autoPushMode: AutoPushScheduleMode
   readonly autoPushIntervalText: string
+  readonly autoPushDailyTime: string
   readonly autoPushAutoCommit: boolean
   readonly autoPushCommitMessage: string
+  readonly autoPullEnabled: boolean
+  readonly autoPullMode: AutoPushScheduleMode
+  readonly autoPullIntervalText: string
+  readonly autoPullDailyTime: string
 }
 
 export class RepositorySettings extends React.Component<
@@ -88,7 +104,12 @@ export class RepositorySettings extends React.Component<
   public constructor(props: IRepositorySettingsProps) {
     super(props)
 
-    const autoPush = getAutoPushPreferences(props.repository.workflowPreferences)
+    const autoPush = getAutoPushPreferences(
+      props.repository.workflowPreferences
+    )
+    const autoPull = getAutoPullPreferences(
+      props.repository.workflowPreferences
+    )
     log.info(
       `[WFP] open ${props.repository.name} (id=${
         props.repository.id
@@ -114,9 +135,15 @@ export class RepositorySettings extends React.Component<
       initialCommitterEmail: null,
       isLoadingGitConfig: true,
       autoPushEnabled: autoPush.enabled,
+      autoPushMode: autoPush.mode,
       autoPushIntervalText: String(autoPush.intervalMinutes),
+      autoPushDailyTime: autoPush.dailyTime,
       autoPushAutoCommit: autoPush.autoCommit,
       autoPushCommitMessage: autoPush.commitMessage ?? '',
+      autoPullEnabled: autoPull.enabled,
+      autoPullMode: autoPull.mode,
+      autoPullIntervalText: String(autoPull.intervalMinutes),
+      autoPullDailyTime: autoPull.dailyTime,
     }
   }
 
@@ -223,6 +250,10 @@ export class RepositorySettings extends React.Component<
               <Octicon className="icon" symbol={octicons.arrowUp} />
               Push automático
             </span>
+            <span>
+              <Octicon className="icon" symbol={octicons.arrowDown} />
+              Pull automático
+            </span>
             {showForkSettings && (
               <span>
                 <Octicon className="icon" symbol={octicons.repoForked} />
@@ -272,14 +303,33 @@ export class RepositorySettings extends React.Component<
         return (
           <AutoPushSettings
             enabled={this.state.autoPushEnabled}
+            mode={this.state.autoPushMode}
             intervalText={this.state.autoPushIntervalText}
+            dailyTime={this.state.autoPushDailyTime}
             autoCommit={this.state.autoPushAutoCommit}
             commitMessage={this.state.autoPushCommitMessage}
             onEnabledChanged={this.onAutoPushEnabledChanged}
+            onModeChanged={this.onAutoPushModeChanged}
             onIntervalTextChanged={this.onAutoPushIntervalTextChanged}
+            onDailyTimeChanged={this.onAutoPushDailyTimeChanged}
             onAutoCommitChanged={this.onAutoPushAutoCommitChanged}
             onCommitMessageChanged={this.onAutoPushCommitMessageChanged}
             onTestNow={this.onTestAutoPushNow}
+          />
+        )
+      }
+      case RepositorySettingsTab.AutoPull: {
+        return (
+          <AutoPullSettings
+            enabled={this.state.autoPullEnabled}
+            mode={this.state.autoPullMode}
+            intervalText={this.state.autoPullIntervalText}
+            dailyTime={this.state.autoPullDailyTime}
+            onEnabledChanged={this.onAutoPullEnabledChanged}
+            onModeChanged={this.onAutoPullModeChanged}
+            onIntervalTextChanged={this.onAutoPullIntervalTextChanged}
+            onDailyTimeChanged={this.onAutoPullDailyTimeChanged}
+            onTestNow={this.onTestAutoPullNow}
           />
         )
       }
@@ -377,13 +427,23 @@ export class RepositorySettings extends React.Component<
     const existingPrefs = this.props.repository.workflowPreferences
     const newAutoPush = this.getAutoPushPreferencesFromState()
     const currentAutoPush = getAutoPushPreferences(existingPrefs)
+    const newAutoPull = this.getAutoPullPreferencesFromState()
+    const currentAutoPull = getAutoPullPreferences(existingPrefs)
     const forkTargetChanged =
       this.state.forkContributionTarget !== existingPrefs.forkContributionTarget
     const autoPushChanged =
       newAutoPush.enabled !== currentAutoPush.enabled ||
+      newAutoPush.mode !== currentAutoPush.mode ||
       newAutoPush.intervalMinutes !== currentAutoPush.intervalMinutes ||
+      newAutoPush.dailyTime !== currentAutoPush.dailyTime ||
       newAutoPush.autoCommit !== currentAutoPush.autoCommit ||
-      (newAutoPush.commitMessage ?? '') !== (currentAutoPush.commitMessage ?? '')
+      (newAutoPush.commitMessage ?? '') !==
+        (currentAutoPush.commitMessage ?? '')
+    const autoPullChanged =
+      newAutoPull.enabled !== currentAutoPull.enabled ||
+      newAutoPull.mode !== currentAutoPull.mode ||
+      newAutoPull.intervalMinutes !== currentAutoPull.intervalMinutes ||
+      newAutoPull.dailyTime !== currentAutoPull.dailyTime
 
     log.info(
       `[WFP] submit ${this.props.repository.name} new=${JSON.stringify(
@@ -391,10 +451,11 @@ export class RepositorySettings extends React.Component<
       )} changed=${autoPushChanged}`
     )
 
-    if (forkTargetChanged || autoPushChanged) {
+    if (forkTargetChanged || autoPushChanged || autoPullChanged) {
       const newPreferences: WorkflowPreferences = {
         ...existingPrefs,
         autoPush: newAutoPush,
+        autoPull: newAutoPull,
         ...(forkTargetChanged
           ? { forkContributionTarget: this.state.forkContributionTarget }
           : {}),
@@ -503,8 +564,16 @@ export class RepositorySettings extends React.Component<
     this.setState({ autoPushEnabled })
   }
 
+  private onAutoPushModeChanged = (autoPushMode: AutoPushScheduleMode) => {
+    this.setState({ autoPushMode })
+  }
+
   private onAutoPushIntervalTextChanged = (autoPushIntervalText: string) => {
     this.setState({ autoPushIntervalText })
+  }
+
+  private onAutoPushDailyTimeChanged = (autoPushDailyTime: string) => {
+    this.setState({ autoPushDailyTime })
   }
 
   private onAutoPushAutoCommitChanged = (autoPushAutoCommit: boolean) => {
@@ -524,6 +593,26 @@ export class RepositorySettings extends React.Component<
     )
   }
 
+  private onAutoPullEnabledChanged = (autoPullEnabled: boolean) => {
+    this.setState({ autoPullEnabled })
+  }
+
+  private onAutoPullModeChanged = (autoPullMode: AutoPushScheduleMode) => {
+    this.setState({ autoPullMode })
+  }
+
+  private onAutoPullIntervalTextChanged = (autoPullIntervalText: string) => {
+    this.setState({ autoPullIntervalText })
+  }
+
+  private onAutoPullDailyTimeChanged = (autoPullDailyTime: string) => {
+    this.setState({ autoPullDailyTime })
+  }
+
+  private onTestAutoPullNow = () => {
+    return this.props.dispatcher.runScheduledPullNow(this.props.repository)
+  }
+
   /** Build the auto-push preferences from the dialog state (parse + clamp). */
   private getAutoPushPreferencesFromState(): AutoPushPreferences {
     const parsed = parseInt(this.state.autoPushIntervalText, 10)
@@ -532,12 +621,38 @@ export class RepositorySettings extends React.Component<
       Number.isNaN(parsed) ? DefaultAutoPushIntervalMinutes : parsed
     )
     const commitMessage = this.state.autoPushCommitMessage.trim()
+    const dailyTime =
+      parseDailyTime(this.state.autoPushDailyTime) !== null
+        ? this.state.autoPushDailyTime
+        : DefaultAutoPushDailyTime
 
     return {
       enabled: this.state.autoPushEnabled,
+      mode: this.state.autoPushMode,
       intervalMinutes,
+      dailyTime,
       autoCommit: this.state.autoPushAutoCommit,
       commitMessage: commitMessage.length > 0 ? commitMessage : undefined,
+    }
+  }
+
+  /** Build the auto-pull preferences from the dialog state (parse + clamp). */
+  private getAutoPullPreferencesFromState(): AutoPullPreferences {
+    const parsed = parseInt(this.state.autoPullIntervalText, 10)
+    const intervalMinutes = Math.max(
+      MinAutoPullIntervalMinutes,
+      Number.isNaN(parsed) ? DefaultAutoPullIntervalMinutes : parsed
+    )
+    const dailyTime =
+      parseDailyTime(this.state.autoPullDailyTime) !== null
+        ? this.state.autoPullDailyTime
+        : DefaultAutoPullDailyTime
+
+    return {
+      enabled: this.state.autoPullEnabled,
+      mode: this.state.autoPullMode,
+      intervalMinutes,
+      dailyTime,
     }
   }
 }

@@ -4,9 +4,9 @@
 # build-dist.ps1/.cmd (Windows).
 #
 #   yarn build:prod  → compila produção e gera o app empacotável em dist/ (os 3 SOs)
-#   yarn package     → gera o instalador (macOS). No Linux ainda NÃO é suportado
-#                      (script/package.ts só trata darwin/win32), então o script
-#                      para no build:prod e aponta o app runnable em dist/.
+#   yarn package     → gera o instalador do SO atual:
+#                      macOS  → .app zipado | Windows → Squirrel (.exe/.msi/.nupkg)
+#                      Linux  → .deb + .rpm + AppImage (best-effort)
 #
 # Cada SO buildа no próprio SO (Electron não faz cross-build).
 #
@@ -68,10 +68,14 @@ case "$OS" in
     echo "OK: instalador/app em dist/."
     ;;
   Linux)
-    echo "==> [3/3] yarn package (gera o instalador .deb)..."
-    echo "    Requer dpkg + fakeroot no sistema (Debian/Ubuntu já têm)."
+    echo "==> [3/3] yarn package (gera .deb + AppImage no host)..."
+    echo "    .deb: requer dpkg + fakeroot | AppImage: baixa o appimagetool sozinho."
+    echo "    Best-effort: o formato cuja ferramenta faltar é pulado (não quebra o build)."
     yarn package
-    echo "OK: .deb em dist/. (AppImage/.rpm ainda não — só .deb por enquanto.)"
+    echo "OK: .deb + AppImage em dist/ (veja o resumo acima)."
+    echo "    .rpm nativo: rode ./build-rpm-docker.sh — a lib de RPM quebra com o RPM"
+    echo "    4.20 do Debian, então geramos num container RHEL. (O AppImage já roda em"
+    echo "    distros RPM, então o .rpm é opcional.)"
     ;;
   *)
     echo "==> [3/3] SO '$OS' desconhecido para empacotar; build:prod concluído em dist/."

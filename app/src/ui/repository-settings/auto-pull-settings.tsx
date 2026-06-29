@@ -4,79 +4,66 @@ import { Button } from '../lib/button'
 import { Checkbox, CheckboxValue } from '../lib/checkbox'
 import { Select } from '../lib/select'
 import { TextBox } from '../lib/text-box'
-import {
-  AutoPushScheduleMode,
-  DefaultAutoCommitMessage,
-} from '../../models/workflow-preferences'
+import { AutoPushScheduleMode } from '../../models/workflow-preferences'
 
-interface IAutoPushSettingsProps {
+interface IAutoPullSettingsProps {
   readonly enabled: boolean
   readonly mode: AutoPushScheduleMode
   readonly intervalText: string
   readonly dailyTime: string
-  readonly autoCommit: boolean
-  readonly commitMessage: string
   readonly onEnabledChanged: (enabled: boolean) => void
   readonly onModeChanged: (mode: AutoPushScheduleMode) => void
   readonly onIntervalTextChanged: (text: string) => void
   readonly onDailyTimeChanged: (time: string) => void
-  readonly onAutoCommitChanged: (autoCommit: boolean) => void
-  readonly onCommitMessageChanged: (message: string) => void
 
   /**
-   * Run the scheduled-push flow right now with the current settings (without
+   * Run the scheduled-pull flow right now with the current settings (without
    * waiting for the timer). Resolves with a short result message.
    */
   readonly onTestNow: () => Promise<string>
 }
 
-interface IAutoPushSettingsState {
+interface IAutoPullSettingsState {
   readonly testing: boolean
   readonly testResult: string | null
 }
 
 /**
- * Repository settings section for the fork's scheduled-push feature: a periodic
- * background push and, optionally, an automatic "standard" commit of pending
- * changes before each push.
- *
- * The push can be scheduled either on a fixed interval or once a day at a
- * specific local time. Both the feature and auto-commit are OFF by default. The
- * actual push only runs when there are commits ahead of a tracked upstream and
- * never force-pushes (see `AppStore.runScheduledPush`).
+ * Repository settings section for the fork's scheduled-pull feature: a periodic
+ * background pull, either on a fixed interval or once a day at a specific local
+ * time. OFF by default. The pull only runs when there's a remote with a tracked
+ * upstream and never forces anything (see `AppStore.runScheduledPull`).
  */
-export class AutoPushSettings extends React.Component<
-  IAutoPushSettingsProps,
-  IAutoPushSettingsState
+export class AutoPullSettings extends React.Component<
+  IAutoPullSettingsProps,
+  IAutoPullSettingsState
 > {
-  public constructor(props: IAutoPushSettingsProps) {
+  public constructor(props: IAutoPullSettingsProps) {
     super(props)
     this.state = { testing: false, testResult: null }
   }
 
   public render() {
-    const { enabled, mode, autoCommit } = this.props
+    const { enabled, mode } = this.props
 
     return (
       <DialogContent>
         <Checkbox
-          label="Push automático agendado"
+          label="Pull automático agendado"
           value={enabled ? CheckboxValue.On : CheckboxValue.Off}
           onChange={this.onEnabledChanged}
         />
         <p className="auto-push-description">
-          Faz push deste repositório em segundo plano — apenas quando há commits
-          à frente de um upstream configurado. Nunca faz force-push.
+          Faz pull deste repositório em segundo plano, mantendo-o atualizado com
+          o upstream. Só roda quando há um remote com upstream rastreado.
         </p>
 
         <Select
-          label="Quando fazer o push"
+          label="Quando fazer o pull"
           value={mode}
           onChange={this.onModeChanged}
         >
-          <option value={AutoPushScheduleMode.Interval}>
-            A cada X minutos
-          </option>
+          <option value={AutoPushScheduleMode.Interval}>A cada X minutos</option>
           <option value={AutoPushScheduleMode.Daily}>
             Todo dia em um horário fixo
           </option>
@@ -85,7 +72,7 @@ export class AutoPushSettings extends React.Component<
         {mode === AutoPushScheduleMode.Daily ? (
           <TextBox
             type="time"
-            label="Horário do push (todos os dias)"
+            label="Horário do pull (todos os dias)"
             value={this.props.dailyTime}
             onValueChanged={this.props.onDailyTimeChanged}
           />
@@ -100,27 +87,9 @@ export class AutoPushSettings extends React.Component<
         {mode === AutoPushScheduleMode.Daily && (
           <p className="auto-push-description">
             Usa o relógio local do seu computador. Se ele estiver desligado ou
-            suspenso na hora marcada, o push acontece assim que voltar.
+            suspenso na hora marcada, o pull acontece assim que voltar.
           </p>
         )}
-
-        <Checkbox
-          label="Auto-commit das alterações pendentes antes do push"
-          value={autoCommit ? CheckboxValue.On : CheckboxValue.Off}
-          onChange={this.onAutoCommitChanged}
-        />
-        <p className="auto-push-description">
-          Commita tudo que estiver pendente com uma mensagem padrão antes de
-          cada push. Use com cautela: esse commit não passa por revisão.
-        </p>
-
-        <TextBox
-          label="Mensagem do commit automático"
-          placeholder={DefaultAutoCommitMessage}
-          value={this.props.commitMessage}
-          onValueChanged={this.props.onCommitMessageChanged}
-          disabled={!autoCommit}
-        />
 
         <div className="auto-push-test">
           <Button onClick={this.onTestNow} disabled={this.state.testing}>
@@ -131,8 +100,7 @@ export class AutoPushSettings extends React.Component<
           )}
         </div>
         <p className="auto-push-description">
-          "Testar agora" roda o fluxo na hora (refresh → auto-commit se ligado →
-          push) com as opções acima, sem esperar o agendamento.
+          "Testar agora" roda o pull na hora, sem esperar o agendamento.
         </p>
       </DialogContent>
     )
@@ -144,10 +112,6 @@ export class AutoPushSettings extends React.Component<
 
   private onModeChanged = (event: React.FormEvent<HTMLSelectElement>) => {
     this.props.onModeChanged(event.currentTarget.value as AutoPushScheduleMode)
-  }
-
-  private onAutoCommitChanged = (event: React.FormEvent<HTMLInputElement>) => {
-    this.props.onAutoCommitChanged(event.currentTarget.checked)
   }
 
   private onTestNow = async () => {

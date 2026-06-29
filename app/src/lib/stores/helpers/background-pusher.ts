@@ -8,12 +8,26 @@ import { Repository } from '../../../models/repository'
 const SkewUpperBound = 30 * 1000
 
 /**
- * Handles periodic background pushes for a single repository.
+ * Describes when a `BackgroundPusher` should fire:
  *
- * Fork feature (multi-repo dashboard — scheduled push). Mirrors
+ *  - `interval`: repeatedly, every `intervalMs` milliseconds.
+ *  - `daily`: once a day at a fixed local time (`hour`:`minute`, the user's own
+ *    clock).
+ */
+export type PushSchedule =
+  | { readonly kind: 'interval'; readonly intervalMs: number }
+  | { readonly kind: 'daily'; readonly hour: number; readonly minute: number }
+
+/**
+ * Handles a periodic background task for a single repository — used by both
+ * scheduled push and scheduled pull (the task to run is injected, so the same
+ * timer drives either one).
+ *
+ * Fork feature (multi-repo dashboard — scheduled sync). Mirrors
  * `BackgroundFetcher`: a self-rescheduling `setTimeout` loop with a small random
  * skew. Unlike the fetcher there's no server-provided poll interval — the
- * cadence is the per-repository, user-configured interval.
+ * cadence is the per-repository, user-configured schedule, which is either a
+ * fixed interval or a daily local time (see `PushSchedule`).
  *
  * The actual push (and optional auto-commit) plus the decision of whether to
  * push are injected so this class stays free of git/store concerns. See
@@ -28,16 +42,16 @@ export class BackgroundPusher {
 
   public constructor(
     private readonly repository: Repository,
-    /** How often to attempt a push, in milliseconds. */
-    private readonly intervalMs: number,
+    /** When this pusher should fire (a fixed interval or a daily local time). */
+    private readonly schedule: PushSchedule,
     private readonly push: (repository: Repository) => Promise<void>,
     private readonly shouldPush: (repository: Repository) => boolean
   ) {}
 
   /**
    * Start the background push loop. The first attempt happens after one full
-   * interval (never immediately) so enabling the feature doesn't trigger a
-   * surprise push right away.
+   * interval (or at the next occurrence of the daily time) — never immediately
+   * — so enabling the feature doesn't trigger a surprise push right away.
    */
   public start() {
     if (this.stopped) {
@@ -64,7 +78,15 @@ export class BackgroundPusher {
   }
 
   private nextDelay(): number {
-    return this.intervalMs + skewInterval()
+    const base =
+      this.schedule.kind === 'interval'
+        ? this.schedule.intervalMs
+        : millisecondsUntilNextDailyTime(
+            this.schedule.hour,
+            this.schedule.minute
+          )
+
+    return base + skewInterval()
   }
 
   /** Perform a push and schedule the next one. */
@@ -93,6 +115,27 @@ export class BackgroundPusher {
       this.nextDelay()
     )
   }
+}
+
+/**
+ * Milliseconds from now until the next occurrence of the given local
+ * time-of-day (the user's own clock). If that time has already passed today,
+ * the next occurrence is tomorrow.
+ *
+ * Because this is recomputed before every scheduled push, the timer naturally
+ * re-aligns with the wall clock each day. And if the machine was asleep at the
+ * target time, the pending `setTimeout` simply fires once it wakes.
+ */
+function millisecondsUntilNextDailyTime(hour: number, minute: number): number {
+  const now = new Date()
+  const next = new Date(now)
+  next.setHours(hour, minute, 0, 0)
+
+  if (next.getTime() <= now.getTime()) {
+    next.setDate(next.getDate() + 1)
+  }
+
+  return next.getTime() - now.getTime()
 }
 
 let _skewInterval: number | null = null

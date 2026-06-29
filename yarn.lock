@@ -2811,6 +2811,19 @@ electron-installer-debian@^3.2.0:
     word-wrap "^1.2.3"
     yargs "^16.0.2"
 
+electron-installer-redhat@^3.4.0:
+  version "3.4.0"
+  resolved "https://registry.yarnpkg.com/electron-installer-redhat/-/electron-installer-redhat-3.4.0.tgz#4a7f8d67b48b7d5b23bd1eb074f4b684ae43b192"
+  integrity sha512-gEISr3U32Sgtj+fjxUAlSDo3wyGGq6OBx7rF5UdpIgbnpUvMN4W5uYb0ThpnAZ42VEJh/3aODQXHbFS4f5J3Iw==
+  dependencies:
+    "@malept/cross-spawn-promise" "^1.0.0"
+    debug "^4.1.1"
+    electron-installer-common "^0.10.2"
+    fs-extra "^9.0.0"
+    lodash "^4.17.15"
+    word-wrap "^1.2.3"
+    yargs "^16.0.2"
+
 electron-packager@^17.1.1:
   version "17.1.1"
   resolved "https://registry.yarnpkg.com/electron-packager/-/electron-packager-17.1.1.tgz#f156fc63d3a66f4e902e4b42992550a172982d59"
@@ -6612,6 +6625,7 @@ stackframe@^1.3.4:
   integrity sha512-oeVtt7eWQS+Na6F//S4kJ2K2VbRlS9D43mAlMyVpVWovy9o+jfgH8O9agzANzaiLjclA0oYzUXEM4PurhSUChw==
 
 "string-width-cjs@npm:string-width@^4.2.0", string-width@^4.2.0:
+  name string-width-cjs
   version "4.2.3"
   resolved "https://registry.yarnpkg.com/string-width/-/string-width-4.2.3.tgz#269c7117d27b05ad2e536830a8ec895ef9c6d010"
   integrity sha512-wKyQRQpjJ0sIp62ErSZdGsjMJWsap5oRNihHhu6G7JVO/9jIB6UyevL+tXuOqrng8j/cxKTWyWUwvSTriiZz/g==
@@ -7491,6 +7505,7 @@ word-wrap@^1.2.3:
   integrity sha512-BN22B5eaMMI9UMtjrGd5g5eCYPpCPDUy0FJXbYsaT5zYxjFOckS53SQDE3pWkVoWpHXVb3BrYcEN4Twa55B5cA==
 
 "wrap-ansi-cjs@npm:wrap-ansi@^7.0.0", wrap-ansi@^7.0.0:
+  name wrap-ansi-cjs
   version "7.0.0"
   resolved "https://registry.yarnpkg.com/wrap-ansi/-/wrap-ansi-7.0.0.tgz#67e145cff510a6a6984bdf1152911d69d2eb9e43"
   integrity sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==
