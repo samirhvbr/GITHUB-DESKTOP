@@ -108,6 +108,10 @@
     "webpack-hot-middleware": "^2.25.1",
     "webpack-merge": "^6.0.1"
   },
+  "optionalDependencies": {
+    "electron-installer-debian": "^3.2.0",
+    "electron-installer-redhat": "^3.4.0"
+  },
   "devDependencies": {
     "@github/markdownlint-github": "^0.1.0",
     "@playwright/test": "^1.58.2",
@@ -157,8 +161,6 @@
     "@types/webpack-hot-middleware": "^2.25.9",
     "diff": "^8.0.3",
     "electron": "42.0.1",
-    "electron-installer-debian": "^3.2.0",
-    "electron-installer-redhat": "^3.4.0",
     "electron-packager": "^17.1.1",
     "electron-winstaller": "^5.0.0",
     "eslint-plugin-github": "^5.1.5",
