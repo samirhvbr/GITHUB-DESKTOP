@@ -9,8 +9,6 @@ import {
   getExecutableName,
   getOSXZipPath,
   getWindowsIdentifierName,
-  getWindowsStandaloneName,
-  getWindowsInstallerName,
   shouldMakeDelta,
   getUpdatesURL,
   isPublishable,
@@ -198,8 +196,11 @@ function packageWindows() {
     loadingGif: splashScreenPath,
     exe: `${nugetPkgName}.exe`,
     title: productName,
-    setupExe: getWindowsStandaloneName(),
-    setupMsi: getWindowsInstallerName(),
+    // Instalador distribuível no mesmo padrão do Linux/.dmg:
+    // dist/GitHub-Desktop_<upstream>_fork-<fork>_<arch>.exe/.msi. Os artefatos de
+    // auto-update do Squirrel (RELEASES + .nupkg) mantêm o nome convencional.
+    setupExe: `${forkArtifactName(getDistArchitecture())}.exe`,
+    setupMsi: `${forkArtifactName(getDistArchitecture())}.msi`,
   }
 
   if (shouldMakeDelta()) {

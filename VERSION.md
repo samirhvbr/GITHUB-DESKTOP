@@ -31,9 +31,10 @@ release do GitHub Desktop este fork é baseado.
   nome a versão _upstream_ **e** a do fork, no formato
   `GitHub-Desktop_<upstream>_fork-<fork>_<arch>.<ext>` — ex.:
   `GitHub-Desktop_3.6.2_fork-0.4.0_amd64.deb`. Vale para `.deb`, `.rpm`,
-  AppImage e `.dmg` (`forkArtifactName()` em `script/package.ts`). Os feeds de
-  auto-update — `.zip` do macOS e os arquivos do Windows — mantêm o nome
-  convencional exigido pelo Squirrel.
+  AppImage, `.dmg` e o instalador do Windows (`.exe`/`.msi`) — via
+  `forkArtifactName()` em `script/package.ts`. Só os feeds de auto-update do
+  Squirrel mantêm o nome convencional: o `.zip` do macOS e o `RELEASES` +
+  `.nupkg` do Windows.
 
 ## 0.3.0
 
