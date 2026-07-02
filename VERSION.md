@@ -1,7 +1,7 @@
 # VERSION
 
 Versão do **fork multi-repositório** do GitHub Desktop — independente da versão
-do app _upstream_ (`app/package.json`, hoje `3.5.13-beta3`), que indica em qual
+do app _upstream_ (`app/package.json`, hoje `3.6.2`), que indica em qual
 release do GitHub Desktop este fork é baseado.
 
 > Fonte de verdade no código: [`app/src/lib/fork-version.ts`](app/src/lib/fork-version.ts).
@@ -26,7 +26,14 @@ release do GitHub Desktop este fork é baseado.
 - **Multiplataforma:** `run-local.sh` (dev Mac/Linux) e `build-dist.sh`/`.ps1`/`.cmd`
   (produção) + guia [run-mac-linux.md](.continue/run-mac-linux.md). Empacotamento de
   instalador: macOS/Windows ✅; **Linux `.deb`** via `packageLinux()` no
-  `script/package.ts` (electron-installer-debian) — escrito, **a validar no Debian**.
+  `script/package.ts` (electron-installer-debian) — **validado no Debian** (build + instalação OK).
+- **Nome dos artefatos padronizado** (todos em `dist/`): cada instalador leva no
+  nome a versão _upstream_ **e** a do fork, no formato
+  `GitHub-Desktop_<upstream>_fork-<fork>_<arch>.<ext>` — ex.:
+  `GitHub-Desktop_3.6.2_fork-0.4.0_amd64.deb`. Vale para `.deb`, `.rpm`,
+  AppImage e `.dmg` (`forkArtifactName()` em `script/package.ts`). Os feeds de
+  auto-update — `.zip` do macOS e os arquivos do Windows — mantêm o nome
+  convencional exigido pelo Squirrel.
 
 ## 0.3.0
 

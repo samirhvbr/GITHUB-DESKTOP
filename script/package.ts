@@ -33,6 +33,7 @@ import { getVersion } from '../app/package-info'
 import { rename } from 'fs/promises'
 import { join } from 'path'
 import { assertNonNullable } from '../app/src/lib/fatal-error'
+import { ForkVersion } from '../app/src/lib/fork-version'
 
 const distPath = getDistPath()
 const productName = getProductName()
@@ -42,6 +43,25 @@ const assertExistsSync = (path: string) => {
   if (!existsSync(path)) {
     throw new Error(`Expected ${path} to exist`)
   }
+}
+
+/**
+ * Fork-aware base filename for a distributable, e.g.
+ * `GitHub-Desktop_3.5.13-beta3_fork-0.4.0_amd64`. It bakes in BOTH the upstream
+ * release this fork is based on (`getVersion()`) and the fork's own version
+ * (`ForkVersion`), so a downloaded installer says exactly what it is at a
+ * glance. The caller appends the extension.
+ *
+ * `archLabel` varies per format: .deb → amd64/arm64, AppImage/.rpm →
+ * x86_64/aarch64, .dmg → x64/arm64.
+ *
+ * Only artifacts we name ourselves use this. The Squirrel auto-update feeds —
+ * the macOS `.zip` and every Windows file (`.exe`/`.msi`/`.nupkg`) — keep their
+ * conventional names, since the updater looks them up by those exact names.
+ */
+function forkArtifactName(archLabel: string): string {
+  const product = getProductName().replace(/\s+/g, '-')
+  return `${product}_${getVersion()}_fork-${ForkVersion}_${archLabel}`
 }
 
 if (process.platform === 'darwin') {
@@ -88,8 +108,13 @@ function packageOSXDMG() {
   const appPath = `${distPath}/${productName}.app`
   assertExistsSync(appPath)
 
-  // dmg lands beside the zip: dist/<Product>-<arch>.dmg
-  const dmgPath = getOSXZipPath().replace(/\.zip$/, '.dmg')
+  // dmg lands in dist/ with a fork-aware name, e.g.
+  // dist/GitHub-Desktop_3.5.13-beta3_fork-0.4.0_x64.dmg. (The Squirrel.Mac .zip
+  // keeps its conventional dist/<Product>-<arch>.zip name for auto-update.)
+  const dmgPath = join(
+    getDistRoot(),
+    `${forkArtifactName(getDistArchitecture())}.dmg`
+  )
   rmSync(dmgPath, { force: true })
 
   // create-dmg copies the *whole* source folder into the image, so stage a
@@ -304,12 +329,12 @@ async function buildDeb(icon: string | null): Promise<string> {
   const arch = getDistArchitecture() === 'arm64' ? 'arm64' : 'amd64'
 
   console.log('Packaging for Linux (.deb)…')
-  await installDebian({
+  const result = await installDebian({
     src: distPath, // dist/desktop-linux-<arch>
     dest: outputDir, // dist/
     arch,
     bin: getExecutableName(), // 'desktop'
-    name: 'github-desktop',
+    name: 'github-desktop', // Debian package id — must stay lowercase
     productName,
     genericName: productName,
     section: 'devel',
@@ -317,7 +342,20 @@ async function buildDeb(icon: string | null): Promise<string> {
     ...(icon ? { icon } : {}),
   })
 
-  return `.deb (${arch}) em ${outputDir}`
+  // electron-installer-debian names the file per Debian convention
+  // (`github-desktop_3.5.13~beta3_amd64.deb`). Rename it to the fork-aware name
+  // so the artifact advertises the fork version too. This touches only the
+  // *filename*: the package's control metadata (name `github-desktop`, version
+  // `3.5.13~beta3`) is untouched, so apt still installs/upgrades it normally.
+  const finalPath = join(outputDir, `${forkArtifactName(arch)}.deb`)
+  const produced: string | undefined = result?.packagePaths?.[0]
+  if (produced && produced !== finalPath) {
+    await rename(produced, finalPath)
+  }
+
+  return produced
+    ? `.deb (${arch}) → ${finalPath}`
+    : `.deb (${arch}) em ${outputDir}`
 }
 
 /** Red Hat package (.rpm) via electron-installer-redhat. Needs rpmbuild. */
@@ -335,13 +373,14 @@ async function buildRpm(icon: string | null): Promise<string> {
   const arch = getDistArchitecture() === 'arm64' ? 'aarch64' : 'x86_64'
 
   console.log('Packaging for Linux (.rpm)…')
+  let result: any
   try {
-    await installRedhat({
+    result = await installRedhat({
       src: distPath,
       dest: outputDir,
       arch,
       bin: getExecutableName(),
-      name: 'github-desktop',
+      name: 'github-desktop', // RPM package id — kept lowercase like the .deb
       productName,
       genericName: productName,
       license: 'MIT',
@@ -362,7 +401,16 @@ async function buildRpm(icon: string | null): Promise<string> {
     )
   }
 
-  return `.rpm (${arch}) em ${outputDir}`
+  // Same as the .deb: rename the RPM-convention file to the fork-aware name.
+  const finalPath = join(outputDir, `${forkArtifactName(arch)}.rpm`)
+  const produced: string | undefined = result?.packagePaths?.[0]
+  if (produced && produced !== finalPath) {
+    await rename(produced, finalPath)
+  }
+
+  return produced
+    ? `.rpm (${arch}) → ${finalPath}`
+    : `.rpm (${arch}) em ${outputDir}`
 }
 
 /**
@@ -419,7 +467,7 @@ async function buildAppImage(icon: string | null): Promise<string> {
   )
   chmodSync(appRun, 0o755)
 
-  const outFile = join(outputDir, `${appId}-${getVersion()}-${arch}.AppImage`)
+  const outFile = join(outputDir, `${forkArtifactName(arch)}.AppImage`)
   rmSync(outFile, { force: true })
 
   // APPIMAGE_EXTRACT_AND_RUN lets appimagetool (itself an AppImage) run without
