@@ -47,6 +47,54 @@ done
 
 cd "$(cd "$(dirname "$0")" && pwd)"
 
+# ── Cronômetro do build: tempo total (parede) + por etapa ───────────────────
+# Mesmo padrão do shvterm/build-local.sh: o "compiled in Xs" do webpack é só
+# UMA etapa interna. Aqui medimos o script INTEIRO (yarn → build:prod →
+# package), por etapa e no total, e imprimimos mesmo quando aborta por erro
+# (trap EXIT). Serve p/ comparar macOS × Linux × Windows e achar onde otimizar.
+SECONDS=0
+_BUILD_OS=$(uname -s); [ "$_BUILD_OS" = Darwin ] && _BUILD_OS=macOS
+_PH_NAMES=(); _PH_TIMES=(); _PH_CUR=""; _PH_START=0
+_fmt() {  # $1 = segundos -> "1h 02m 03s" / "4m 05s" / "37s"
+  local t=$1
+  if   [ "$t" -ge 3600 ]; then printf '%dh %02dm %02ds' $((t/3600)) $(((t%3600)/60)) $((t%60))
+  elif [ "$t" -ge 60 ];   then printf '%dm %02ds' $((t/60)) $((t%60))
+  else                         printf '%ds' "$t"; fi
+}
+step() {  # fecha a etapa anterior, abre a nova, e mostra o relógio corrente
+  local now=$SECONDS
+  if [ -n "$_PH_CUR" ]; then
+    _PH_NAMES+=("$_PH_CUR"); _PH_TIMES+=($((now - _PH_START)))
+  elif [ "$now" -gt 0 ]; then
+    _PH_NAMES+=("preparação (prereqs + credenciais)"); _PH_TIMES+=("$now")
+  fi
+  _PH_CUR="$1"; _PH_START=$now
+  echo "==> [$(_fmt "$now")] $1"
+}
+_summary() {  # tabela final: cada etapa + TOTAL
+  if [ -n "$_PH_CUR" ]; then
+    _PH_NAMES+=("$_PH_CUR"); _PH_TIMES+=($((SECONDS - _PH_START))); _PH_CUR=""
+  fi
+  echo ""
+  echo "⏱  tempo por etapa ($_BUILD_OS):"
+  if [ "${#_PH_NAMES[@]}" -gt 0 ]; then
+    local i
+    for i in "${!_PH_NAMES[@]}"; do
+      printf '     %8s  %s\n' "$(_fmt "${_PH_TIMES[$i]}")" "${_PH_NAMES[$i]}"
+    done
+  fi
+  echo "     ────────"
+  printf '     %8s  TOTAL\n' "$(_fmt "$SECONDS")"
+}
+_on_exit() {  # se abortar (exit != 0), ainda mostra quanto tempo rodou
+  local code=$?
+  if [ "$code" -ne 0 ]; then
+    echo "" >&2
+    echo "❌ build abortou após $(_fmt "$SECONDS")  ($_BUILD_OS, exit $code)" >&2
+  fi
+}
+trap _on_exit EXIT
+
 OS="$(uname -s)"
 
 echo "==> verificando pré-requisitos (node, yarn)..."
@@ -117,14 +165,14 @@ if [ "$OS" = "Darwin" ]; then
   fi
 fi
 
+step "[1/3] yarn (instala deps + baixa o Electron)"
 if [ "$SKIP_INSTALL" -eq 0 ]; then
-  echo "==> [1/3] yarn (instala deps + baixa o Electron)..."
   yarn
 else
-  echo "==> [1/3] yarn install PULADO (--skip-install)"
+  echo "    (pulado: --skip-install)"
 fi
 
-echo "==> [2/3] yarn build:prod (compila produção + assina/notariza no macOS → dist/)..."
+step "[2/3] yarn build:prod (compila produção + assina/notariza no macOS → dist/)"
 yarn build:prod
 
 # ── macOS: gruda (staple) o ticket no .app antes de empacotar ───────────────────
@@ -144,7 +192,7 @@ fi
 
 case "$OS" in
   Darwin)
-    echo "==> [3/3] yarn package (.zip de auto-update + .dmg de distribuição)..."
+    step "[3/3] yarn package (.zip de auto-update + .dmg de distribuição)"
     yarn package
     if [ "$MAC_SIGNED" = 1 ]; then
       echo "==> macOS: conferindo Developer ID + notarização do .app..."
@@ -167,7 +215,7 @@ case "$OS" in
     echo "OK: .zip (auto-update) + .dmg (distribuição) em dist/."
     ;;
   Linux)
-    echo "==> [3/3] yarn package (gera .deb + AppImage no host)..."
+    step "[3/3] yarn package (gera .deb + AppImage no host)"
     echo "    .deb: requer dpkg + fakeroot | AppImage: baixa o appimagetool sozinho."
     echo "    Best-effort: o formato cuja ferramenta faltar é pulado (não quebra o build)."
     yarn package
@@ -180,3 +228,4 @@ case "$OS" in
     echo "==> [3/3] SO '$OS' desconhecido para empacotar; build:prod concluído em dist/."
     ;;
 esac
+_summary
