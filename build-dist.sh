@@ -108,11 +108,32 @@ if [ "$NODE_MAJOR" -lt 22 ]; then
   exit 1
 fi
 echo "    node $(node -v) OK"
-if ! command -v yarn >/dev/null 2>&1; then
-  echo "ERRO: yarn não está no PATH. Rode 'npm install -g yarn'." >&2
-  exit 1
+# .nvmrc fixa 24.15.0. >= 22 compila, mas node muito novo (26+) é bleeding-edge e
+# pode quebrar dependências nativas na hora do build — avisa (sem abortar).
+if [ "$NODE_MAJOR" -ne 24 ]; then
+  echo "⚠️  node $(node -v): o projeto fixa 24.15.0 (.nvmrc); >= 22 roda, mas se o build" >&2
+  echo "    falhar adiante em módulo nativo, use 'nvm install 24.15.0 && nvm use 24.15.0'." >&2
 fi
-echo "    yarn OK"
+
+# yarn: se faltar, INSTALA sozinho (npm -g, o caminho que já funciona aqui) em vez
+# de só mandar rodar na mão. O projeto usa yarn classic (engines: yarn >= 1.9).
+if ! command -v yarn >/dev/null 2>&1; then
+  echo "    yarn ausente — instalando ('npm install -g yarn')..."
+  if ! npm install -g yarn; then
+    echo "ERRO: 'npm install -g yarn' falhou. Instale o yarn na mão e rode de novo." >&2
+    exit 1
+  fi
+  hash -r 2>/dev/null || true   # zera o cache de lookup do shell atual após instalar
+  if ! command -v yarn >/dev/null 2>&1; then
+    echo "ERRO: yarn instalado, mas fora do PATH deste shell." >&2
+    echo "      O bin global do npm ($(npm prefix -g 2>/dev/null)/bin) não está no PATH;" >&2
+    echo "      abra um terminal novo (ou ajuste o PATH) e rode de novo." >&2
+    exit 1
+  fi
+  echo "    yarn $(yarn -v) instalado OK"
+else
+  echo "    yarn $(yarn -v 2>/dev/null) OK"
+fi
 
 # ── macOS: credenciais de assinatura/notarização (anti-"vai pro lixo") ──────────
 # build:prod assina (Developer ID do keychain) e — se estas variáveis estiverem no
