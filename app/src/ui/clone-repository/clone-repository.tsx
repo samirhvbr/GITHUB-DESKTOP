@@ -8,7 +8,6 @@ import {
   isEnterpriseAccount,
 } from '../../models/account'
 import { FoldoutType } from '../../lib/app-state'
-import { BannerType } from '../../models/banner'
 import {
   IRepositoryIdentifier,
   parseRepositoryIdentifier,
@@ -31,6 +30,33 @@ import { showOpenDialog, showSaveDialog } from '../main-process-proxy'
 import { readdir } from 'fs/promises'
 import { isTopMostDialog } from '../dialog/is-top-most'
 import memoizeOne from 'memoize-one'
+import pLimit from 'p-limit'
+import { Button } from '../lib/button'
+import { Octicon, syncClockwise } from '../octicons'
+import * as octicons from '../octicons/octicons.generated'
+
+/**
+ * How many repositories to clone at the same time during a batch clone.
+ * Cloning is network- and disk-bound, so a small concurrency avoids saturating
+ * the connection while still finishing a large batch quickly.
+ */
+const MaxConcurrentClones = 4
+
+/** Outcome of a single repository within a batch clone run. */
+type BatchCloneStatus = 'running' | 'done' | 'error' | 'skipped'
+
+/**
+ * Per-repository result of a batch clone, shown in the clone report so the user
+ * can see exactly what succeeded, what failed (and why), and what was skipped.
+ */
+interface IBatchCloneResult {
+  readonly name: string
+  /** The clone URL, used as the stable key for progress updates. */
+  readonly url: string
+  readonly status: BatchCloneStatus
+  /** Short human-readable detail (error message, "pasta já existe", etc.). */
+  readonly message?: string
+}
 
 interface ICloneRepositoryProps {
   readonly dispatcher: Dispatcher
@@ -104,6 +130,20 @@ interface ICloneRepositoryState {
    * The persisted state of the CloneGenericRepository component.
    */
   readonly urlTabState: IUrlTabState
+
+  /**
+   * Progress/report of the last batch clone. `null` until a batch clone starts;
+   * once set, the dialog shows the clone report screen (instead of the tabs)
+   * until the user closes it. `running` flips to `false` when every repository
+   * has finished (cloned, failed or skipped).
+   */
+  readonly batchClone: {
+    readonly running: boolean
+    readonly results: ReadonlyArray<IBatchCloneResult>
+  } | null
+
+  /** Whether the "Copiar relatório" button just copied (drives its label). */
+  readonly reportCopied: boolean
 }
 
 /**
@@ -184,6 +224,13 @@ export class CloneRepository extends React.Component<
           )
   )
 
+  /**
+   * Set once the dialog unmounts so the async batch-clone loop stops calling
+   * setState on a component that's no longer mounted (the user can close the
+   * report while clones are still running in the background).
+   */
+  private disposed = false
+
   public constructor(props: ICloneRepositoryProps) {
     super(props)
 
@@ -218,6 +265,8 @@ export class CloneRepository extends React.Component<
         kind: 'urlTabState',
         ...initialBaseTabState,
       },
+      batchClone: null,
+      reportCopied: false,
     }
 
     this.initializePath()
@@ -245,6 +294,7 @@ export class CloneRepository extends React.Component<
   }
 
   public componentWillUnmount(): void {
+    this.disposed = true
     this.checkIsTopMostDialog(false)
   }
 
@@ -270,6 +320,10 @@ export class CloneRepository extends React.Component<
   }
 
   public render() {
+    if (this.state.batchClone !== null) {
+      return this.renderBatchCloneReport(this.state.batchClone)
+    }
+
     const { error } = this.getSelectedTabState()
     return (
       <Dialog
@@ -618,7 +672,10 @@ export class CloneRepository extends React.Component<
     // this, props.selectedItem stays null in batch mode and the filter list
     // resets its internal selected row on every toggle, which makes it
     // re-anchor and jump the scroll position back to the top on each click.
-    this.setGitHubTabState({ selectedUrls: next, selectedItem: repository }, tab)
+    this.setGitHubTabState(
+      { selectedUrls: next, selectedItem: repository },
+      tab
+    )
   }
 
   /**
@@ -672,42 +729,114 @@ export class CloneRepository extends React.Component<
       tabState.selectedUrls.has(r.clone_url)
     )
 
+    if (selected.length === 0) {
+      return
+    }
+
     // Skip repositories whose destination folder already exists (and isn't
     // empty) instead of letting each one fail with a "destination already
-    // exists / Retry clone" error popup. The skipped ones are reported via a
-    // banner once the remaining clones are queued.
+    // exists / Retry clone" error popup. Skipped repos are still listed in the
+    // report so the user can see why nothing was cloned for them.
     const toClone = new Array<IAPIRepository>()
-    const skipped = new Array<string>()
+    const seeded = new Array<IBatchCloneResult>()
     for (const repo of selected) {
       const destination = Path.join(rootPath, repo.name)
       const folderError = await this.validateEmptyFolder(destination)
       if (folderError === null) {
         toClone.push(repo)
+        seeded.push({ name: repo.name, url: repo.clone_url, status: 'running' })
       } else {
-        skipped.push(repo.name)
+        seeded.push({
+          name: repo.name,
+          url: repo.clone_url,
+          status: 'skipped',
+          message: 'pasta já existe',
+        })
       }
     }
 
     this.props.dispatcher.closeFoldout(FoldoutType.Repository)
-
-    for (const repo of toClone) {
-      const destination = Path.join(rootPath, repo.name)
-      this.props.dispatcher.clone(repo.clone_url, destination, {
-        defaultBranch: repo.default_branch,
-      })
-    }
-
     setDefaultDir(rootPath)
 
-    if (skipped.length > 0) {
-      this.props.dispatcher.setBanner({
-        type: BannerType.BatchCloneSkippedExisting,
-        clonedCount: toClone.length,
-        skipped,
-      })
+    // Switch the dialog to the report screen and keep it open so the user can
+    // watch progress and read the per-repo outcome (success or failure) — the
+    // fire-and-forget batch clone used to just close the dialog with no report.
+    this.setState({ batchClone: { running: true, results: seeded } })
+
+    // Clone a few at a time, awaiting each so we can record its real result.
+    const limit = pLimit(MaxConcurrentClones)
+    await Promise.all(
+      toClone.map(repo =>
+        limit(async () => {
+          const destination = Path.join(rootPath, repo.name)
+          try {
+            const cloned = await this.props.dispatcher.clone(
+              repo.clone_url,
+              destination,
+              { defaultBranch: repo.default_branch }
+            )
+            if (cloned !== null) {
+              log.info(`[BatchClone] cloned '${repo.name}' -> ${destination}`)
+              this.updateBatchCloneResult(repo.clone_url, {
+                status: 'done',
+                message: 'clonado',
+              })
+            } else {
+              log.error(
+                `[BatchClone] clone of '${repo.name}' failed (no repository returned)`
+              )
+              this.updateBatchCloneResult(repo.clone_url, {
+                status: 'error',
+                message: 'falhou (veja o log do app)',
+              })
+            }
+          } catch (e) {
+            const message = e instanceof Error ? e.message : String(e)
+            log.error(`[BatchClone] clone of '${repo.name}' failed`, e)
+            this.updateBatchCloneResult(repo.clone_url, {
+              status: 'error',
+              message,
+            })
+          }
+        })
+      )
+    )
+
+    if (this.disposed) {
+      return
     }
 
-    this.props.onDismissed()
+    this.setState(prevState =>
+      prevState.batchClone === null
+        ? null
+        : { batchClone: { ...prevState.batchClone, running: false } }
+    )
+  }
+
+  /** Merge an update into a single repository's row in the clone report. */
+  private updateBatchCloneResult = (
+    url: string,
+    update: Partial<IBatchCloneResult>
+  ) => {
+    if (this.disposed) {
+      return
+    }
+
+    this.setState(prevState => {
+      const batch = prevState.batchClone
+      if (batch === null) {
+        return null
+      }
+
+      return {
+        batchClone: {
+          ...batch,
+          results: batch.results.map(r =>
+            r.url === url ? { ...r, ...update } : r
+          ),
+        },
+      }
+    })
   }
 
   private validatePath = async () => {
@@ -948,6 +1077,176 @@ export class CloneRepository extends React.Component<
     this.props.onDismissed()
 
     setDefaultDir(Path.resolve(path, '..'))
+  }
+
+  /** Plain-text version of the clone report, for the "Copiar relatório" button. */
+  private buildCloneReportText(
+    results: ReadonlyArray<IBatchCloneResult>
+  ): string {
+    const sections: ReadonlyArray<[string, BatchCloneStatus]> = [
+      ['Com erro', 'error'],
+      ['Clonando', 'running'],
+      ['Clonados', 'done'],
+      ['Já existiam (puladas)', 'skipped'],
+    ]
+
+    const lines = [
+      `Relatório de clonagem — ${results.length} repositório(s)`,
+      '',
+    ]
+
+    for (const [title, status] of sections) {
+      const items = results.filter(r => r.status === status)
+      if (items.length === 0) {
+        continue
+      }
+      lines.push(`# ${title} (${items.length})`)
+      items.forEach(r =>
+        lines.push(`- ${r.name}${r.message ? ` — ${r.message}` : ''}`)
+      )
+      lines.push('')
+    }
+
+    return lines.join('\n').trim() + '\n'
+  }
+
+  /** Close the report — but never while clones are still in flight. */
+  private onCloseCloneReport = () => {
+    if (this.state.batchClone?.running) {
+      return
+    }
+    this.props.onDismissed()
+  }
+
+  private onCopyCloneReport = async () => {
+    const batch = this.state.batchClone
+    if (batch === null) {
+      return
+    }
+
+    try {
+      await navigator.clipboard.writeText(
+        this.buildCloneReportText(batch.results)
+      )
+      this.setState({ reportCopied: true })
+      window.setTimeout(() => {
+        if (!this.disposed) {
+          this.setState({ reportCopied: false })
+        }
+      }, 2000)
+    } catch (e) {
+      log.error('[BatchClone] failed to copy clone report', e)
+    }
+  }
+
+  private renderCloneReportSection(
+    title: string,
+    items: ReadonlyArray<IBatchCloneResult>,
+    symbol: octicons.OcticonSymbol,
+    className: string
+  ) {
+    if (items.length === 0) {
+      return null
+    }
+
+    return (
+      <div className={`report-section ${className}`}>
+        <h3>
+          {title} ({items.length})
+        </h3>
+        <ul>
+          {items.map(r => (
+            <li key={r.url}>
+              <Octicon
+                symbol={symbol}
+                className={className === 'running' ? 'spin' : undefined}
+              />
+              <span className="repo-name">{r.name}</span>
+              {r.message ? (
+                <span className="repo-message">{r.message}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+
+  private renderBatchCloneReport(batch: {
+    readonly running: boolean
+    readonly results: ReadonlyArray<IBatchCloneResult>
+  }) {
+    const { running, results } = batch
+    const done = results.filter(r => r.status === 'done')
+    const errored = results.filter(r => r.status === 'error')
+    const skipped = results.filter(r => r.status === 'skipped')
+    const cloning = results.filter(r => r.status === 'running')
+    const finished = done.length + errored.length + skipped.length
+
+    const title = running
+      ? `Clonando… (${finished}/${results.length})`
+      : 'Relatório de clonagem'
+
+    return (
+      <Dialog
+        id="clone-batch-report"
+        className="clone-repository clone-batch-report"
+        title={title}
+        onSubmit={this.onCloseCloneReport}
+        onDismissed={this.onCloseCloneReport}
+        loading={running}
+        dismissDisabled={running}
+      >
+        <DialogContent>
+          <div className="clone-report-body selectable-text">
+            <p className="report-summary">
+              {results.length} repositório{results.length === 1 ? '' : 's'}:{' '}
+              {done.length} clonado{done.length === 1 ? '' : 's'},{' '}
+              {errored.length} com erro, {skipped.length} já{' '}
+              {skipped.length === 1 ? 'existia' : 'existiam'}.
+            </p>
+
+            {this.renderCloneReportSection(
+              'Com erro',
+              errored,
+              octicons.x,
+              'error'
+            )}
+            {this.renderCloneReportSection(
+              'Clonando',
+              cloning,
+              syncClockwise,
+              'running'
+            )}
+            {this.renderCloneReportSection(
+              'Clonados',
+              done,
+              octicons.check,
+              'done'
+            )}
+            {this.renderCloneReportSection(
+              'Já existiam (puladas)',
+              skipped,
+              octicons.skip,
+              'skipped'
+            )}
+          </div>
+        </DialogContent>
+        <DialogFooter>
+          <Button onClick={this.onCopyCloneReport}>
+            <Octicon symbol={octicons.copy} />
+            {this.state.reportCopied ? 'Copiado!' : 'Copiar relatório'}
+          </Button>
+          <Button
+            type="submit"
+            disabled={running}
+            onClick={this.onCloseCloneReport}
+          >
+            Fechar
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    )
   }
 
   private onWindowFocus = () => {

@@ -50,3 +50,74 @@
     }
   }
 }
+
+// Report screen shown after a batch clone ("Clone N repositories"), listing the
+// outcome of each repository (cloned / failed / already existed).
+.clone-repository.clone-batch-report {
+  .clone-report-body {
+    overflow-y: auto;
+
+    .report-summary {
+      margin: 0 0 var(--spacing) 0;
+      color: var(--text-secondary-color);
+    }
+
+    .report-section {
+      margin-bottom: var(--spacing-double);
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+
+      h3 {
+        margin: 0 0 var(--spacing-half) 0;
+        font-size: var(--font-size);
+        font-weight: var(--font-weight-semibold);
+      }
+
+      ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      li {
+        display: flex;
+        align-items: baseline;
+        gap: var(--spacing-half);
+        padding: 1px 0;
+
+        .octicon {
+          flex-shrink: 0;
+          width: 14px;
+          align-self: center;
+        }
+
+        .repo-name {
+          font-weight: var(--font-weight-semibold);
+        }
+
+        .repo-message {
+          color: var(--text-secondary-color);
+          font-size: var(--font-size-sm);
+        }
+      }
+
+      &.error li .octicon {
+        color: var(--dialog-error-color, var(--error-color));
+      }
+
+      &.done li .octicon {
+        color: var(--color-new, var(--success-color));
+      }
+
+      &.running li .octicon {
+        color: var(--text-secondary-color);
+      }
+
+      &.skipped li .octicon {
+        color: var(--text-secondary-color);
+      }
+    }
+  }
+}
