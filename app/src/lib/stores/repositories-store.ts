@@ -384,19 +384,21 @@ export class RepositoriesStore extends TypedBaseStore<
   }
 
   /**
-   * Switch the repository to a different worktree path, persisting the main
-   * worktree path as a stable anchor for recovery.
+   * Switch the repository to a different worktree path, persisting the target
+   * git directory as a stable anchor for recovery.
    *
    * If another repository already exists at the target path, returns that
    * repository instead of modifying the current one.
    *
    * @param repository  The repository to switch
    * @param worktreePath The path of the worktree to switch to
+   * @param gitDir       The git directory for the target worktree
    */
   public async switchWorktree(
     repository: Repository,
     worktreePath: string,
-    missing = false
+    missing = false,
+    gitDir: string | undefined = repository.gitDir
   ): Promise<{ repository: Repository; existingRepository: boolean }> {
     const existing = await this.db.repositories.get({ path: worktreePath })
 
@@ -410,6 +412,7 @@ export class RepositoriesStore extends TypedBaseStore<
     await this.db.repositories.update(repository.id, {
       path: worktreePath,
       missing,
+      gitDir,
     })
 
     this.emitUpdatedRepositories()
@@ -422,7 +425,8 @@ export class RepositoriesStore extends TypedBaseStore<
         missing,
         repository.alias,
         repository.workflowPreferences,
-        repository.isTutorialRepository
+        repository.isTutorialRepository,
+        gitDir
       ),
       existingRepository: false,
     }

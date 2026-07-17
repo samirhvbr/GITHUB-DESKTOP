@@ -32,6 +32,10 @@ import {
   IFileConflictContext,
   formatConflictContextForPrompt,
 } from '../copilot-conflict-context'
+import {
+  createCopilotInMemorySessionFsProvider,
+  getCopilotInMemorySessionFsConfig,
+} from '../copilot-in-memory-session-fs-provider'
 import * as ipcRenderer from '../ipc-renderer'
 import { startTimer } from '../../ui/lib/timing'
 import { join } from 'path'
@@ -762,6 +766,10 @@ export class CopilotStore extends BaseStore {
         }`,
       },
       workingDirectory: repositoryPath,
+      sessionFs: getCopilotInMemorySessionFsConfig(
+        repositoryPath,
+        __WIN32__ ? 'windows' : 'posix'
+      ),
       gitHubToken: account.token,
     })
   }
@@ -1002,6 +1010,8 @@ export class CopilotStore extends BaseStore {
             content: buildCommitMessageSystemPrompt(hasRules, tags),
           },
           availableTools: [],
+          enableSessionStore: false,
+          createSessionFsProvider: createCopilotInMemorySessionFsProvider,
           onPermissionRequest: async () => ({
             kind: 'reject',
           }),
@@ -1298,6 +1308,8 @@ export class CopilotStore extends BaseStore {
         provider: modelConfig.provider,
         streaming: true,
         availableTools: [],
+        enableSessionStore: false,
+        createSessionFsProvider: createCopilotInMemorySessionFsProvider,
         systemMessage: {
           mode: 'append',
           content: ConflictResolutionSystemPrompt,
