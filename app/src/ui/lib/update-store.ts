@@ -28,6 +28,12 @@ import { getUserAgent } from '../../lib/http'
 /** The last version a showcase was seen. */
 export const lastShowCaseVersionSeen = 'version-of-last-showcase'
 
+/**
+ * Fork: mantém o auto-update desligado — o feed oficial do GitHub Desktop
+ * substituiria o build customizado e apagaria o fork instalado.
+ */
+const forkAutoUpdateDisabled: boolean = true
+
 /** The states the auto updater can be in. */
 export enum UpdateStatus {
   /** The auto updater is checking for updates. */
@@ -198,6 +204,18 @@ class UpdateStore {
    *                       attempt to retrieve the latest available deployment.
    */
   public async checkForUpdates(inBackground: boolean, skipGuidCheck: boolean) {
+    // Fork: auto-update desabilitado. O feed oficial (central.github.com)
+    // substituiria este build pelo binário oficial do GitHub Desktop,
+    // apagando as customizações. Atualizar = merge da tag release-X.Y.Z
+    // do upstream + rebuild manual.
+    if (forkAutoUpdateDisabled) {
+      log.info('Auto-update desabilitado no fork; ignorando checagem')
+      this.touchLastChecked()
+      this.status = UpdateStatus.UpdateNotAvailable
+      this.emitDidChange()
+      return
+    }
+
     // An update has been downloaded and the app is waiting to be restarted.
     // Checking for updates again may result in the running app being nuked
     // when it finds a subsequent update on Windows, or the "Quit and Update"
