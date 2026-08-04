@@ -7,7 +7,7 @@
  * the repository root) in sync — it holds the human-readable changelog for
  * each fork version.
  */
-export const ForkVersion = '0.4.0'
+export const ForkVersion = '0.4.1'
 
 /** Short product label for the fork, shown alongside the version. */
 export const ForkName = 'Multi-Repo'

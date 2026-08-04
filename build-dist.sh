@@ -7,7 +7,7 @@
 #   yarn package     → gera o instalador do SO atual:
 #                      macOS  → .zip do .app (auto-update) + .dmg (distribuição)
 #                      Windows → Squirrel (.exe/.msi/.nupkg)
-#                      Linux  → .deb + .rpm + AppImage (best-effort)
+#                      Linux  → .deb + .rpm + AppImage + .pkg.tar.zst/Arch (best-effort)
 #
 # Cada SO buildа no próprio SO (Electron não faz cross-build).
 #

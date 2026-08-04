@@ -9,7 +9,15 @@ release do GitHub Desktop este fork é baseado.
 > A versão em execução aparece na tela inicial ("Let's get started!") e no
 > diálogo **About**.
 
-## 0.4.0 — atual
+## 0.4.1 — atual
+
+- **Empacotamento Linux — pacote Arch (`.pkg.tar.zst`):** `yarn package` passa a
+  gerar também o pacote pacman, convertendo o `.deb` com o `fpm` no próprio host
+  Debian (best-effort: sem `fpm`, só esse formato é pulado). Dependências
+  mapeadas para os nomes do Arch (espelha o `github-desktop-bin` do AUR).
+  Desligável/selecionável via `LINUX_FORMATS` (default `deb,rpm,appimage,pacman`).
+
+## 0.4.0
 
 - **Painel de repositórios — ações em lote:**
   - **Pull/Push em lote** nos repos selecionados (checkbox por linha + "Selecionar

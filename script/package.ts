@@ -274,11 +274,11 @@ function packageLinux() {
 }
 
 /**
- * Build every Linux artifact we know how to produce (.deb, .rpm, AppImage) in a
- * best-effort fashion: each format is attempted independently, a missing system
- * tool only skips that one format, and we only fail the whole step if nothing
- * could be produced at all. (Each format has to be built on a Linux host —
- * Electron can't cross-build.)
+ * Build every Linux artifact we know how to produce (.deb, .rpm, AppImage,
+ * pacman) in a best-effort fashion: each format is attempted independently, a
+ * missing system tool only skips that one format, and we only fail the whole
+ * step if nothing could be produced at all. (Each format has to be built on a
+ * Linux host — Electron can't cross-build.)
  */
 async function runLinuxPackaging() {
   const icon = resolveLinuxIcon()
@@ -286,7 +286,7 @@ async function runLinuxPackaging() {
   // Which formats to build, overridable via LINUX_FORMATS (comma-separated,
   // e.g. `LINUX_FORMATS=rpm`). Defaults to all. This lets the Fedora/RHEL
   // container in build-rpm-docker.sh build only the .rpm.
-  const requested = (process.env.LINUX_FORMATS ?? 'deb,rpm,appimage')
+  const requested = (process.env.LINUX_FORMATS ?? 'deb,rpm,appimage,pacman')
     .split(',')
     .map(s => s.trim().toLowerCase())
     .filter(s => s.length > 0)
@@ -296,9 +296,11 @@ async function runLinuxPackaging() {
     readonly name: string
     readonly build: (icon: string | null) => Promise<string>
   }> = [
+    // Order matters for pacman: it converts the .deb, so deb must come first.
     { key: 'deb', name: '.deb', build: buildDeb },
     { key: 'rpm', name: '.rpm', build: buildRpm },
     { key: 'appimage', name: 'AppImage', build: buildAppImage },
+    { key: 'pacman', name: '.pkg.tar.zst', build: buildPacman },
   ].filter(f => requested.includes(f.key))
 
   if (formats.length === 0) {
@@ -421,6 +423,64 @@ async function buildRpm(icon: string | null): Promise<string> {
   return produced
     ? `.rpm (${arch}) → ${finalPath}`
     : `.rpm (${arch}) em ${outputDir}`
+}
+
+/**
+ * Arch Linux package (.pkg.tar.zst), converted from the .deb with fpm — so it
+ * can be produced on the same Debian build host, no makepkg/Arch box needed.
+ * Requires the .deb to have been built earlier in this same run (the formats
+ * array orders deb first, so a plain run satisfies this; `LINUX_FORMATS=pacman`
+ * alone won't).
+ */
+async function buildPacman(_icon: string | null): Promise<string> {
+  if (!commandExists('fpm')) {
+    throw new Error(
+      'fpm não encontrado — instale com `sudo apt install ruby ruby-dev ' +
+        'build-essential zstd libarchive-tools && sudo gem install fpm`'
+    )
+  }
+
+  // pacman names the architecture 'x86_64'/'aarch64'; the source .deb 'amd64'/'arm64'.
+  const arch = getDistArchitecture() === 'arm64' ? 'aarch64' : 'x86_64'
+  const debArch = getDistArchitecture() === 'arm64' ? 'arm64' : 'amd64'
+
+  const debPath = join(outputDir, `${forkArtifactName(debArch)}.deb`)
+  if (!existsSync(debPath)) {
+    throw new Error(
+      'o .pkg.tar.zst é convertido do .deb — gere o formato deb antes (LINUX_FORMATS precisa incluir deb)'
+    )
+  }
+
+  const outFile = join(outputDir, `${forkArtifactName(arch)}.pkg.tar.zst`)
+  rmSync(outFile, { force: true })
+
+  console.log('Packaging for Linux (pacman)…')
+  // Dependencies swapped BY HAND for their Arch names (--no-auto-depends): the
+  // .deb carries Debian package names, which don't exist in pacman and would
+  // make the package uninstallable. Set mirrors AUR's github-desktop-bin.
+  const deps = [
+    'curl',
+    'git',
+    'gtk3',
+    'libsecret',
+    'libxss',
+    'nss',
+    'org.freedesktop.secrets',
+  ]
+  cp.execSync(
+    [
+      'fpm -s deb -t pacman',
+      `-p "${outFile}"`,
+      '--no-auto-depends',
+      ...deps.map(d => `-d "${d}"`),
+      '--pacman-compression zstd',
+      `-a ${arch}`,
+      `"${debPath}"`,
+    ].join(' '),
+    { stdio: 'inherit' }
+  )
+
+  return `.pkg.tar.zst (${arch}) → ${outFile}`
 }
 
 /**
